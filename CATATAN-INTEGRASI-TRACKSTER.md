@@ -81,7 +81,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/ai.trackster.my.id/privkey.pem;
 
     location / {
-        proxy_pass http://frontend:3100;
+        proxy_pass http://ai-frontend:3100;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -104,7 +104,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/api.ai.trackster.my.id/privkey.pem;
 
     location / {
-        proxy_pass http://backend:4100;
+        proxy_pass http://ai-backend:4100;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -113,7 +113,9 @@ server {
 }
 ```
 
-**Catatan penting:** `proxy_pass http://frontend:3100` dan `http://backend:4100` itu nama container AI Trackster — ini cuma bisa di-resolve nginx Trackster KALAU sudah join `shared-web-net` di langkah 2. Kalau belum, nginx bakal error "host not found in upstream".
+**Catatan penting:** `proxy_pass http://ai-frontend:3100` dan `http://ai-backend:4100` itu nama service AI Trackster — ini cuma bisa di-resolve nginx Trackster KALAU sudah join `shared-web-net` di langkah 2. Kalau belum, nginx bakal error "host not found in upstream".
+
+**Kenapa dinamai `ai-frontend`/`ai-backend`, bukan `frontend`/`backend` polos:** Trackster sendiri juga punya service bernama `frontend`/`backend`. Kalau nama sama persis dan nginx Trackster join `shared-web-net` (tempat container AI Trackster juga nempel), DNS Docker jadi ambigu — nginx bisa salah resolve ke container yang salah proyek, dan trafik `track.trackster.my.id` bisa nyasar ke AI Trackster (atau sebaliknya). Ini pernah kejadian pas deploy pertama kali dan bikin Trackster production 502 sesaat.
 
 ### 4. DNS
 

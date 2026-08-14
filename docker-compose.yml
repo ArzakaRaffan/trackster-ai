@@ -1,5 +1,5 @@
 services:
-  backend:
+  ai-backend:
     build:
       context: ./apps/backend
     restart: unless-stopped
@@ -22,14 +22,14 @@ services:
     networks:
       - shared-web-net
 
-  frontend:
+  ai-frontend:
     build:
       context: ./apps/frontend
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     restart: unless-stopped
     depends_on:
-      - backend
+      - ai-backend
     expose:
       - '3100'
     networks:
