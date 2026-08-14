@@ -252,6 +252,71 @@ function gitRun(cwd, env, args) {
   });
 }
 
+// --- Safety net: setelah auto-merge, health check endpoint web app, kalau gagal
+// lakukan revert dan update reviewReasoning. ---
+async function checkEndpointHealth(url, timeoutMs) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (res.ok) return { ok: true };
+    return { ok: false, status: res.status };
+  } catch (err) {
+    return { ok: false, error: err.message || 'Network error' };
+  }
+}
+
+async function appendReviewReasoning(jobId, newText) {
+  const fresh = await prisma.job.findUnique({ where: { id: jobId } });
+  const existing = fresh?.reviewReasoning || '';
+  const timestamp = new Date().toISOString();
+  const updated = `${existing}${existing ? '\n' : ''}[${timestamp}] ${newText}`;
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { reviewReasoning: updated },
+  });
+}
+
+async function runPostMergeHealthCheck(jobId) {
+  const baseUrlBackend = process.env.BACKEND_HEALTH_URL || process.env.BACKEND_URL || 'http://127.0.0.1:4100';
+  const baseUrlFrontend = process.env.FRONTEND_HEALTH_URL || process.env.FRONTEND_URL || 'http://127.0.0.1:3100';
+  const endpoints = [
+    { name: 'backend /auth/me', url: `${baseUrlBackend}/auth/me` },
+    { name: 'backend /jobs', url: `${baseUrlBackend}/jobs` },
+    { name: 'frontend /', url: `${baseUrlFrontend}/` },
+    { name: 'frontend /jobs', url: `${baseUrlFrontend}/jobs` },
+  ];
+
+  const timeoutMs = parseInt(process.env.HEALTH_CHECK_TIMEOUT_MS || '7000', 10);
+  const retries = parseInt(process.env.HEALTH_CHECK_RETRIES || '3', 10);
+  const backoffMs = parseInt(process.env.HEALTH_CHECK_BACKOFF_MS || '2000', 10);
+  let lastFailureSummary = '';
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const failures = [];
+    for (const ep of endpoints) {
+      const result = await checkEndpointHealth(ep.url, timeoutMs);
+      if (!result.ok) {
+        failures.push(`${ep.name} (${result.status || result.error || 'unknown'})`);
+      }
+    }
+
+    if (failures.length === 0) {
+      return { success: true };
+    }
+
+    lastFailureSummary = failures.join('; ');
+    log(`Job ${jobId}: health check attempt ${attempt}/${retries} gagal: ${lastFailureSummary}`);
+
+    if (attempt < retries) {
+      await new Promise((r) => setTimeout(r, backoffMs * attempt));
+    }
+  }
+
+  return { success: false, failureSummary: lastFailureSummary };
+}
+
 async function cloneForReview(targetRepo, branchName, sshKeyContent) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-trackster-review-'));
   const keyPath = path.join(tmpDir, 'deploy_key');
@@ -410,6 +475,39 @@ async function reviewAndMaybeMerge(job, branchName) {
     await gitRun(cloneDir, gitEnv, ['push', '--quiet', 'origin', 'main']);
 
     await prisma.job.update({ where: { id: job.id }, data: { merged: true } });
+
+    // --- Safety net: setelah auto-merge, health-check endpoint web app ---
+    const waitMs = parseInt(process.env.POST_MERGE_HEALTH_WAIT_MS || '20000', 10);
+    log(`Job ${job.id}: menunggu ${waitMs}ms propagasi deploy sebelum health check...`);
+    await new Promise((r) => setTimeout(r, waitMs));
+
+    const healthResult = await runPostMergeHealthCheck(job.id);
+    if (!healthResult.success) {
+      const failureSummary = healthResult.failureSummary || 'unknown error';
+      const revertSummary = `Auto-revert dilakukan karena health check gagal: ${failureSummary}`;
+
+      try {
+        const mergeCommitHash = (await gitRun(cloneDir, gitEnv, ['rev-parse', 'HEAD'])).trim();
+        const parentCountOutput = await gitRun(cloneDir, gitEnv, ['rev-list', '--parents', '-n', '1', mergeCommitHash]);
+        const tokens = parentCountOutput.trim().split(/\s+/);
+        const parentCount = tokens.length - 1;
+        const revertArgs = parentCount > 1
+          ? ['revert', '--no-edit', '-m', '1', mergeCommitHash]
+          : ['revert', '--no-edit', mergeCommitHash];
+
+        await gitRun(cloneDir, gitEnv, revertArgs);
+        await gitRun(cloneDir, gitEnv, ['push', '--quiet', 'origin', 'main']);
+        await appendReviewReasoning(job.id, revertSummary);
+        log(`Job ${job.id}: ${revertSummary}`);
+      } catch (revertErr) {
+        const fallback = `Auto-revert GAGAL. Health check gagal: ${failureSummary}. Error revert: ${revertErr.message}`;
+        await appendReviewReasoning(job.id, fallback);
+        log(`Job ${job.id}: ${fallback}`);
+      }
+    } else {
+      log(`Job ${job.id}: health check setelah auto-merge OK.`);
+    }
+
     log(`Job ${job.id}: lolos review, auto-merged ke main.`);
   } catch (err) {
     // Konflik merge atau error lain -- jangan biarin nyangkut tanpa penjelasan, tapi

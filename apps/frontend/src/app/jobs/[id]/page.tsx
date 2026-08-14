@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Trash2, CheckCircle2, Clock, AlertTriangle, Zap, ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react';
+import { ArrowLeft, Loader2, Trash2, CheckCircle2, Clock, AlertTriangle, Zap, RotateCcw, ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import AgentSecretPrompt from '@/components/AgentSecretPrompt';
@@ -27,7 +27,7 @@ interface JobDetail {
   executionCostUsd: number | null;
 }
 
-type PendingAction = 'save-plan' | 'approve' | 'delete' | null;
+type PendingAction = 'save-plan' | 'approve' | 'delete' | 'retry' | null;
 
 const fetcher = (path: string) => api.get<JobDetail>(path);
 
@@ -110,6 +110,14 @@ export default function JobDetailPage() {
       } else if (pendingAction === 'delete') {
         await api.delete(`/jobs/${id}`, secret);
         router.push('/jobs');
+      } else if (pendingAction === 'retry') {
+        const targetRepoKey = job.targetRepo.includes('ai-trackster') ? 'ai-trackster' : 'trackster';
+        const createdJob = await api.post<JobDetail>('/jobs', {
+          idea: job.idea,
+          targetRepoKey,
+          mode: job.mode.toLowerCase(),
+        }, secret);
+        router.push(`/jobs/${createdJob.id}`);
       }
     } catch (err: any) {
       setError(err.message || 'Aksi gagal');
@@ -285,13 +293,26 @@ export default function JobDetailPage() {
           </div>
         )}
 
-        <button
-          onClick={() => setPendingAction('delete')}
-          className="inline-flex items-center gap-1 text-xs font-medium text-status-error transition hover:text-status-error/80"
-        >
-          <Trash2 className="h-3 w-3" />
-          Hapus job
-        </button>
+        <div className="flex items-center gap-4">
+          {job.status === 'FAILED' && (
+            <button
+              onClick={() => setPendingAction('retry')}
+              disabled={saving}
+              className="inline-flex items-center gap-2 text-xs font-semibold text-status-warning transition hover:text-status-warning/80"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Retry
+            </button>
+          )}
+
+          <button
+            onClick={() => setPendingAction('delete')}
+            className="inline-flex items-center gap-1 text-xs font-medium text-status-error transition hover:text-status-error/80"
+          >
+            <Trash2 className="h-3 w-3" />
+            Hapus job
+          </button>
+        </div>
 
         {pendingAction && (
           <AgentSecretPrompt
@@ -300,7 +321,9 @@ export default function JobDetailPage() {
                 ? 'Konfirmasi jalankan agent'
                 : pendingAction === 'delete'
                   ? 'Konfirmasi hapus job'
-                  : 'Konfirmasi simpan plan'
+                  : pendingAction === 'retry'
+                    ? 'Konfirmasi retry job'
+                    : 'Konfirmasi simpan plan'
             }
             onConfirm={runAction}
             onCancel={() => setPendingAction(null)}

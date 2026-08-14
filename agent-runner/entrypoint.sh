@@ -51,6 +51,130 @@ mapfile -t EDITABLE_FILES < <(find apps -type f \
   -not -name "package-lock.json" \
   2>/dev/null)
 
+# --- Guardrail schema drift & smoke test (Task 1 & 3) ---
+
+collect_changed_files() {
+  {
+    git diff --name-only "origin/main...HEAD"
+    git diff --name-only
+    git diff --cached --name-only
+    git ls-files --others --exclude-standard
+  } | sort -u
+}
+
+run_schema_drift_check() {
+  local changed
+  changed=$(collect_changed_files)
+
+  if printf '%s\n' "$changed" | grep -qx 'apps/backend/prisma/schema.prisma'; then
+    if ! printf '%s\n' "$changed" | grep -qx 'worker/prisma/schema.prisma'; then
+      echo "SCHEMA_DRIFT_CHECK_FAILED: apps/backend/prisma/schema.prisma berubah, tapi worker/prisma/schema.prisma TIDAK ikut berubah. Kedua file Prisma schema harus disinkronkan dalam commit yang sama." >&2
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+smoke_cleanup() {
+  local pid="$1"
+  if [ -n "$pid" ]; then
+    if kill -0 "$pid" 2>/dev/null; then
+      local pgid
+      pgid=$(ps -o pgid= -p "$pid" | tr -d ' ')
+      if [ -n "$pgid" ]; then
+        kill -- -"$pgid" 2>/dev/null
+      fi
+      kill "$pid" 2>/dev/null
+    fi
+  fi
+}
+
+run_smoke_test() {
+  local backend_pid=""
+  local frontend_pid=""
+  local backend_ready=0
+  local frontend_ready=0
+  local failed_endpoints=""
+  local max_retries=15
+  local attempt
+
+  # Start backend dan frontend sebagai background process.
+  # Smoke test ini best-effort: hanya memastikan proses bisa serve HTTP dan
+  # endpoint tidak langsung return 5xx/connection refused. Ini bukan pengganti
+  # automated test suite yang sesungguhnya.
+  (cd apps/backend && npm run start > /tmp/backend-smoke.log 2>&1) &
+  backend_pid=$!
+
+  (cd apps/frontend && npm run dev > /tmp/frontend-smoke.log 2>&1) &
+  frontend_pid=$!
+
+  local backend_port="${BACKEND_PORT:-4100}"
+  local frontend_port="${FRONTEND_PORT:-3100}"
+
+  for attempt in $(seq 1 $max_retries); do
+    if kill -0 "$backend_pid" 2>/dev/null && (exec 3<>/dev/tcp/127.0.0.1/$backend_port) 2>/dev/null; then
+      backend_ready=1
+      break
+    fi
+    if ! kill -0 "$backend_pid" 2>/dev/null; then
+      failed_endpoints+="backend proses mati sebelum siap; "
+      break
+    fi
+    sleep 2
+  done
+
+  for attempt in $(seq 1 $max_retries); do
+    if kill -0 "$frontend_pid" 2>/dev/null && (exec 3<>/dev/tcp/127.0.0.1/$frontend_port) 2>/dev/null; then
+      frontend_ready=1
+      break
+    fi
+    if ! kill -0 "$frontend_pid" 2>/dev/null; then
+      failed_endpoints+="frontend proses mati sebelum siap; "
+      break
+    fi
+    sleep 2
+  done
+
+  if [ "$backend_ready" -eq 1 ] && [ "$frontend_ready" -eq 1 ]; then
+    check_url() {
+      local url="$1"
+      local code
+      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$url" 2>/dev/null)
+      if [ -z "$code" ]; then
+        failed_endpoints+="timeout/connection refused: $url; "
+        return 1
+      fi
+      case "$code" in
+        5*)
+          failed_endpoints+="HTTP $code: $url; "
+          return 1
+          ;;
+        *)
+          return 0
+          ;;
+      esac
+    }
+
+    check_url "http://127.0.0.1:${backend_port}/auth/me"
+    check_url "http://127.0.0.1:${backend_port}/jobs"
+    check_url "http://127.0.0.1:${frontend_port}/"
+    check_url "http://127.0.0.1:${frontend_port}/jobs"
+  else
+    failed_endpoints+="backend_ready=$backend_ready frontend_ready=$frontend_ready; "
+  fi
+
+  smoke_cleanup "$backend_pid"
+  smoke_cleanup "$frontend_pid"
+
+  if [ -n "$failed_endpoints" ]; then
+    echo "SMOKE_TEST_FAILED: $failed_endpoints"
+    return 1
+  fi
+
+  return 0
+}
+
 echo "=== Menjalankan Aider (model: $AIDER_MODEL, ${#EDITABLE_FILES[@]} file di-add ke chat) ==="
 
 MAX_BUILD_RETRIES=3
@@ -85,14 +209,10 @@ while [ $ROUND -le $MAX_CONTINUATION_ROUNDS ]; do
   ROUND=$((ROUND + 1))
 done
 
-# --- Loop verifikasi build, feed error balik ke Aider kalau gagal ---
+# --- Loop verifikasi build, tambahan schema drift guardrail, dan smoke test ---
 while [ $ATTEMPT -le $MAX_BUILD_RETRIES ]; do
-  echo "=== Verifikasi build (percobaan $ATTEMPT) ==="
+  echo "=== Verifikasi build & smoke test (percobaan $ATTEMPT) ==="
 
-  # PENTING: tangkap exit code masing-masing build LANGSUNG setelah command-nya
-  # jalan, jangan andalkan `$?` di akhir — kalau kedua project ada (seperti di
-  # repo ini), `$?` cuma bakal reflect if-block TERAKHIR (frontend), jadi
-  # backend build yang gagal bisa lolos tanpa ketahuan dan ke-push begitu saja.
   BUILD_LOG=""
   BUILD_FAILED=0
 
@@ -110,15 +230,31 @@ while [ $ATTEMPT -le $MAX_BUILD_RETRIES ]; do
   fi
 
   if [ $BUILD_FAILED -eq 0 ]; then
-    echo "Build OK."
+    echo "Build/typecheck OK. Menjalankan schema drift guardrail..."
+    if ! run_schema_drift_check; then
+      BUILD_FAILED=1
+      BUILD_LOG+="\nSCHEMA_DRIFT_CHECK_FAILED: apps/backend/prisma/schema.prisma berubah, tapi worker/prisma/schema.prisma TIDAK ikut berubah. Kedua file Prisma schema harus disinkronkan dalam commit yang sama."
+    fi
+  fi
+
+  if [ $BUILD_FAILED -eq 0 ]; then
+    echo "Schema drift OK. Menjalankan smoke test..."
+    if ! SMOKE_OUTPUT=$(run_smoke_test 2>&1); then
+      BUILD_FAILED=1
+      BUILD_LOG+="\nSMOKE_TEST_FAILED:\n$SMOKE_OUTPUT"
+    fi
+  fi
+
+  if [ $BUILD_FAILED -eq 0 ]; then
+    echo "Build, guardrail, dan smoke test OK."
     BUILD_OK=1
     break
   fi
 
-  echo "Build gagal, feed error balik ke Aider..."
+  echo "Verifikasi gagal, feed error balik ke Aider..."
   echo "$BUILD_LOG" > /tmp/build-error.txt
   aider --model "$AIDER_MODEL" --yes-always --no-check-update \
-    --message "Build/typecheck gagal dengan error berikut, perbaiki: $(cat /tmp/build-error.txt | tail -100)" \
+    --message "Build/typecheck/guardrail/smoke test gagal dengan error berikut, perbaiki: $(cat /tmp/build-error.txt | tail -100)" \
     "${EDITABLE_FILES[@]}" 2>&1
 
   ATTEMPT=$((ATTEMPT + 1))
