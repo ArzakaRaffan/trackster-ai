@@ -11,6 +11,13 @@ export class CreateJobDto {
   @IsOptional()
   @IsIn(['trackster', 'ai-trackster'])
   targetRepoKey?: 'trackster' | 'ai-trackster';
+
+  // 'manual' (default): approve + review + merge manual seperti biasa.
+  // 'auto': auto-approve begitu plan jadi, auto-merge ke main kalau lolos review Claude
+  // DAN nggak nyentuh file sensitif (lihat worker/poll-and-run.js).
+  @IsOptional()
+  @IsIn(['manual', 'auto'])
+  mode?: 'manual' | 'auto';
 }
 
 export class UpdatePlanDto {

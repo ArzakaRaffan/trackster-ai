@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { PlannerService } from './planner.service';
-import { JobStatus } from '@prisma/client';
+import { JobStatus, JobMode } from '@prisma/client';
 
 @Injectable()
 export class JobService {
@@ -12,7 +12,11 @@ export class JobService {
     private planner: PlannerService,
   ) {}
 
-  async create(idea: string, targetRepoKey: 'trackster' | 'ai-trackster' = 'trackster') {
+  async create(
+    idea: string,
+    targetRepoKey: 'trackster' | 'ai-trackster' = 'trackster',
+    mode: 'manual' | 'auto' = 'manual',
+  ) {
     // Resolve dari env, BUKAN terima url mentah dari client -- biar job nggak bisa
     // diarahkan clone/push ke repo sembarangan lewat request yang dimanipulasi.
     const targetRepo =
@@ -26,7 +30,12 @@ export class JobService {
     }
 
     const job = await this.prisma.job.create({
-      data: { idea, targetRepo, status: JobStatus.DRAFTING_PLAN },
+      data: {
+        idea,
+        targetRepo,
+        status: JobStatus.DRAFTING_PLAN,
+        mode: mode === 'auto' ? JobMode.AUTO : JobMode.MANUAL,
+      },
     });
 
     // Generate plan secara async, tidak blocking response create.
@@ -41,10 +50,13 @@ export class JobService {
   private async generatePlanInBackground(jobId: number) {
     const job = await this.prisma.job.findUniqueOrThrow({ where: { id: jobId } });
     try {
-      const plan = await this.planner.generatePlan(job.idea);
+      const { plan, branchSlug } = await this.planner.generatePlan(job.idea);
+      // Mode AUTO: skip nunggu approve manual, langsung QUEUED begitu plan jadi.
+      // Mode MANUAL (default): tetap PLANNED, nunggu user approve kayak biasa.
+      const nextStatus = job.mode === JobMode.AUTO ? JobStatus.QUEUED : JobStatus.PLANNED;
       await this.prisma.job.update({
         where: { id: jobId },
-        data: { plan, status: JobStatus.PLANNED },
+        data: { plan, branchSlug, status: nextStatus },
       });
     } catch (err) {
       await this.prisma.job.update({

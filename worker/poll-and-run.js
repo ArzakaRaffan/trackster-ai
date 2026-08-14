@@ -71,7 +71,7 @@ async function reconcileOrphanedJobs() {
   log(`Ketemu ${orphaned.length} job nyangkut RUNNING dari sebelum restart, reconcile dulu...`);
 
   for (const job of orphaned) {
-    const branchName = `ai-agent/job-${job.id}`;
+    const branchName = buildBranchName(job);
     const isSelfEdit = process.env.SELF_REPO_URL && job.targetRepo === process.env.SELF_REPO_URL;
     const sshKeyContent = isSelfEdit ? process.env.GIT_SSH_KEY_SELF : process.env.GIT_SSH_KEY;
 
@@ -112,7 +112,14 @@ async function pickupNextJob() {
   return queued;
 }
 
-function runAgentContainer(job, promptFilePath, envFilePath, sshKeyFilePath) {
+// Slug dari Claude (planner) dipakai buat nama branch yang deskriptif kalau ada,
+// fallback ke "job-<id>" polos kalau slug-nya kosong/gagal ke-generate. Suffix id tetap
+// disertakan biar unik walau ada 2 job dengan slug yang mirip.
+function buildBranchName(job) {
+  return job.branchSlug ? `ai-agent/${job.branchSlug}-${job.id}` : `ai-agent/job-${job.id}`;
+}
+
+function runAgentContainer(job, branchName, promptFilePath, envFilePath, sshKeyFilePath) {
   return new Promise((resolve, reject) => {
     const containerName = `ai-agent-job-${job.id}-${Date.now()}`;
 
@@ -124,7 +131,7 @@ function runAgentContainer(job, promptFilePath, envFilePath, sshKeyFilePath) {
       '--memory', AGENT_MEMORY_LIMIT,
       '--env-file', envFilePath,
       '-e', `TARGET_REPO=${job.targetRepo}`,
-      '-e', `BRANCH_NAME=ai-agent/job-${job.id}`,
+      '-e', `BRANCH_NAME=${branchName}`,
       '-v', `${promptFilePath}:/tmp/prompt.txt:ro`,
       '-v', `${sshKeyFilePath}:/tmp/deploy_key:ro`,
       AGENT_IMAGE,
@@ -157,6 +164,189 @@ function runAgentContainer(job, promptFilePath, envFilePath, sshKeyFilePath) {
       reject(err);
     });
   });
+}
+
+// --- Mode AUTO: setelah job selesai, review diff-nya pakai Claude (API yang sama dengan
+// planner, mwapi.dev) SEBELUM auto-merge ke main. Baca diff jauh lebih murah tokennya
+// dibanding generate, tapi ini TETAP bukan pengganti review manusia sepenuhnya -- makanya
+// ada guardrail keras file sensitif yang nggak bisa di-override sama verdict Claude.
+const SENSITIVE_FILE_PATTERNS = [
+  /(^|\/)entrypoint\.sh$/,
+  /(^|\/)auth\.guard\.ts$/,
+  /(^|\/)agent-secret\.guard\.ts$/,
+  /docker-compose.*\.ya?ml$/,
+  /^\.github\/workflows\//,
+  /\.env(\..*)?$/,
+  // worker/poll-and-run.js sendiri -- kalau job auto-edit file INI, dia bisa mengubah
+  // logic auto-merge-nya sendiri tanpa ada yang ngecek. Selalu wajib manual.
+  /(^|\/)poll-and-run\.js$/,
+];
+
+function matchesSensitivePattern(filePath) {
+  return SENSITIVE_FILE_PATTERNS.some((re) => re.test(filePath));
+}
+
+function gitRun(cwd, env, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('git', args, { cwd, env });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (d) => (out += d.toString()));
+    child.stderr.on('data', (d) => (err += d.toString()));
+    child.on('close', (code) => {
+      if (code === 0) resolve(out);
+      else reject(new Error(err.trim() || `git ${args.join(' ')} exit ${code}`));
+    });
+  });
+}
+
+async function cloneForReview(targetRepo, branchName, sshKeyContent) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-trackster-review-'));
+  const keyPath = path.join(tmpDir, 'deploy_key');
+  fs.writeFileSync(keyPath, (sshKeyContent || '').trimEnd() + '\n', { mode: 0o600 });
+  const gitEnv = {
+    ...process.env,
+    GIT_SSH_COMMAND: `ssh -i ${keyPath} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null`,
+  };
+  const cloneDir = path.join(tmpDir, 'repo');
+
+  await new Promise((resolve, reject) => {
+    const child = spawn('git', ['clone', '--quiet', targetRepo, cloneDir], { env: gitEnv });
+    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`git clone exit ${code}`))));
+  });
+
+  await gitRun(cloneDir, gitEnv, ['fetch', '--quiet', 'origin', branchName]);
+  const changedFilesRaw = await gitRun(cloneDir, gitEnv, ['diff', '--name-only', `origin/main...origin/${branchName}`]);
+  const diff = await gitRun(cloneDir, gitEnv, ['diff', `origin/main...origin/${branchName}`]);
+  const changedFiles = changedFilesRaw.split('\n').map((l) => l.trim()).filter(Boolean);
+
+  return { tmpDir, cloneDir, gitEnv, diff, changedFiles };
+}
+
+async function reviewDiffWithClaude(idea, diff) {
+  const baseUrl = process.env.PLANNER_API_BASE_URL || 'https://api.anthropic.com';
+  const apiKey = process.env.PLANNER_API_KEY;
+  const model = process.env.PLANNER_MODEL || 'claude-sonnet-5';
+  if (!apiKey) throw new Error('PLANNER_API_KEY belum di-set di worker/.env, auto-review nggak bisa jalan');
+
+  const systemPrompt = `Kamu reviewer keamanan kode, mereview diff yang dibikin AI coding agent SEBELUM di-auto-merge ke branch main TANPA review manusia.
+
+JANGAN PERNAH memanggil/menggunakan tool atau function apapun. Kamu TIDAK PUNYA akses baca file lain di luar diff yang dikasih -- cukup nilai dari diff itu sendiri.
+
+Tugas kamu: nilai apakah diff ini AMAN buat di-merge otomatis. Bilang UNSAFE kalau:
+- Ada perubahan mencurigakan/berbahaya (menghapus data, disable/melemahkan authentication atau authorization check, expose secret/credential, kirim data ke endpoint eksternal yang tidak diminta).
+- Diff nggak nyambung sama sekali dengan task/ide yang diminta.
+- Diff kosong/nyaris kosong padahal task-nya signifikan (tanda kerjaan nggak selesai).
+- Ada tanda-tanda kode yang jelas rusak/nggak masuk akal secara sepintas (walau build/typecheck katanya lolos).
+
+Bilang SAFE kalau diff terlihat masuk akal, sesuai task, dan nggak ada dari poin-poin di atas.
+
+Jawab HANYA dalam format JSON PERSIS seperti ini, tanpa teks lain di luar JSON, dan jangan pernah output tool-call:
+{"safe": true atau false, "reasoning": "penjelasan singkat 1-3 kalimat kenapa"}`;
+
+  const userMessage = `Task/ide asli:\n${idea}\n\nDiff yang mau di-review (git diff main...branch):\n${diff.slice(0, 60_000)}`;
+
+  const res = await fetch(`${baseUrl}/v1/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Review API error (HTTP ${res.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  const textBlock = data.content?.find((c) => c.type === 'text');
+  if (!textBlock?.text) throw new Error('Response review tidak berisi teks yang valid');
+
+  const raw = textBlock.text.trim();
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error(`Response review bukan JSON valid: ${raw.slice(0, 200)}`);
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  return { safe: parsed.safe === true, reasoning: String(parsed.reasoning || '').slice(0, 2000) };
+}
+
+async function reviewAndMaybeMerge(job, branchName) {
+  const isSelfEdit = process.env.SELF_REPO_URL && job.targetRepo === process.env.SELF_REPO_URL;
+  const sshKeyContent = isSelfEdit ? process.env.GIT_SSH_KEY_SELF : process.env.GIT_SSH_KEY;
+
+  log(`Job ${job.id}: mode AUTO, mulai review diff sebelum merge...`);
+
+  let tmpDir;
+  try {
+    const { tmpDir: dir, cloneDir, gitEnv, diff, changedFiles } = await cloneForReview(
+      job.targetRepo,
+      branchName,
+      sshKeyContent,
+    );
+    tmpDir = dir;
+
+    const sensitiveHit = changedFiles.find(matchesSensitivePattern);
+    if (sensitiveHit) {
+      await prisma.job.update({
+        where: { id: job.id },
+        data: {
+          reviewVerdict: 'SKIPPED_SENSITIVE_FILE',
+          reviewReasoning: `Diff nyentuh file sensitif (${sensitiveHit}), auto-merge dibatalkan, fallback ke manual review.`,
+        },
+      });
+      log(`Job ${job.id}: nyentuh file sensitif (${sensitiveHit}), skip auto-merge.`);
+      return;
+    }
+
+    if (!diff.trim()) {
+      await prisma.job.update({
+        where: { id: job.id },
+        data: { reviewVerdict: 'UNSAFE', reviewReasoning: 'Diff kosong, kemungkinan kerjaan gagal/tidak ada perubahan nyata.' },
+      });
+      log(`Job ${job.id}: diff kosong, skip auto-merge.`);
+      return;
+    }
+
+    const verdict = await reviewDiffWithClaude(job.idea, diff);
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { reviewVerdict: verdict.safe ? 'SAFE' : 'UNSAFE', reviewReasoning: verdict.reasoning },
+    });
+
+    if (!verdict.safe) {
+      log(`Job ${job.id}: Claude review bilang UNSAFE (${verdict.reasoning}), skip auto-merge.`);
+      return;
+    }
+
+    await gitRun(cloneDir, gitEnv, ['checkout', 'main']);
+    await gitRun(cloneDir, gitEnv, ['pull', '--quiet', 'origin', 'main']);
+    await gitRun(cloneDir, gitEnv, [
+      'merge', '--no-ff', `origin/${branchName}`,
+      '-m', `Auto-merge job ${job.id} (Claude review: SAFE)\n\n${job.idea.slice(0, 200)}`,
+    ]);
+    await gitRun(cloneDir, gitEnv, ['push', '--quiet', 'origin', 'main']);
+
+    await prisma.job.update({ where: { id: job.id }, data: { merged: true } });
+    log(`Job ${job.id}: lolos review, auto-merged ke main.`);
+  } catch (err) {
+    // Konflik merge atau error lain -- jangan biarin nyangkut tanpa penjelasan, tapi
+    // status job tetap DONE, branch-nya masih ada dan bisa direview/merge manual.
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { reviewReasoning: `Auto-merge gagal: ${err.message}` },
+    });
+    log(`Job ${job.id}: auto-merge gagal (${err.message}), fallback manual review.`);
+  } finally {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 async function processJob(job) {
@@ -192,9 +382,10 @@ async function processJob(job) {
     ].join('\n'),
   );
 
+  const branchName = buildBranchName(job);
+
   try {
-    const { exitCode, output } = await runAgentContainer(job, promptFilePath, envFilePath, sshKeyFilePath);
-    const branchName = `ai-agent/job-${job.id}`;
+    const { exitCode, output } = await runAgentContainer(job, branchName, promptFilePath, envFilePath, sshKeyFilePath);
 
     if (exitCode === 0) {
       await prisma.job.update({
@@ -207,6 +398,14 @@ async function processJob(job) {
         },
       });
       log(`Job ${job.id} selesai, branch: ${branchName}`);
+
+      if (job.mode === 'AUTO') {
+        try {
+          await reviewAndMaybeMerge(job, branchName);
+        } catch (err) {
+          log(`Job ${job.id}: error pas auto-review/merge: ${err.message}`);
+        }
+      }
     } else {
       await prisma.job.update({
         where: { id: job.id },

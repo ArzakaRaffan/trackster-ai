@@ -13,7 +13,7 @@ export class JobController {
   @UseGuards(AgentSecretGuard)
   @Post()
   async create(@Body() dto: CreateJobDto) {
-    return this.jobService.create(dto.idea, dto.targetRepoKey);
+    return this.jobService.create(dto.idea, dto.targetRepoKey, dto.mode);
   }
 
   // Lihat daftar/detail job cukup login biasa, nggak perlu password kedua
