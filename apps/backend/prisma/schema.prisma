@@ -12,6 +12,7 @@ model User {
   username  String   @unique
   password  String
   createdAt DateTime @default(now())
+  chatSessions ChatSession[]
 }
 
 model Job {
@@ -35,4 +36,26 @@ enum JobStatus {
   RUNNING // Lagi dieksekusi di container
   DONE // Selesai, ada branchName buat direview
   FAILED // Ada error, cek errorMessage/logOutput
+}
+
+model ChatSession {
+  id            Int           @id @default(autoincrement())
+  userId        Int
+  user          User          @relation(fields: [userId], references: [id])
+  title         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  lastMessageAt DateTime?
+  isDeleted     Boolean       @default(false)
+  deletedAt     DateTime?
+  messages      ChatMessage[]
+}
+
+model ChatMessage {
+  id        Int         @id @default(autoincrement())
+  sessionId Int
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime    @default(now())
 }
