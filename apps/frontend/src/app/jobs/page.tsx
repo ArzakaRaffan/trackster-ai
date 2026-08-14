@@ -92,7 +92,7 @@ function JobSkeleton() {
   );
 }
 
-function ActiveJobCard({ job }: { job: Job }) {
+function ActiveJobCard({ job, index = 0 }: { job: Job; index?: number }) {
   const status = STATUS_CONFIG[job.status];
   const StatusIcon = status.icon;
   const costText = job.status === 'DONE' || job.status === 'FAILED' ? getJobCostText(job) : null;
@@ -100,7 +100,8 @@ function ActiveJobCard({ job }: { job: Job }) {
   return (
     <Link
       href={`/jobs/${job.id}`}
-      className="group relative block overflow-hidden rounded-2xl border border-primary/20 bg-card p-6 shadow-2xl shadow-black/30 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:bg-hover"
+      className="group relative block overflow-hidden rounded-2xl border border-primary/20 bg-card p-6 shadow-2xl shadow-black/30 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:bg-hover animate-fade-in-up"
+      style={{ animationDelay: `${index * 70}ms` }}
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(30,215,96,0.18),transparent_45%)]" />
       <div className="relative">
@@ -130,7 +131,7 @@ function ActiveJobCard({ job }: { job: Job }) {
   );
 }
 
-function HistoryJobRow({ job }: { job: Job }) {
+function HistoryJobRow({ job, index = 0 }: { job: Job; index?: number }) {
   const status = STATUS_CONFIG[job.status];
   const StatusIcon = status.icon;
   const costText = getJobCostText(job);
@@ -138,7 +139,8 @@ function HistoryJobRow({ job }: { job: Job }) {
   return (
     <Link
       href={`/jobs/${job.id}`}
-      className="group flex items-center gap-3 rounded-xl border border-border bg-card/70 px-4 py-3 transition duration-200 hover:bg-hover"
+      className="group flex items-center gap-3 rounded-xl border border-border bg-card/70 px-4 py-3 transition duration-200 hover:bg-hover animate-fade-in-up"
+      style={{ animationDelay: `${index * 70}ms` }}
     >
       <span className={`badge shrink-0 ${status.className}`}>
         <StatusIcon className="h-3 w-3" />
@@ -384,8 +386,8 @@ export default function JobsDashboardPage() {
 
             {!isLoading && !error && activeJobs.length > 0 && (
               <div className="space-y-4">
-                {activeJobs.map((job) => (
-                  <ActiveJobCard key={job.id} job={job} />
+                {activeJobs.map((job, idx) => (
+                  <ActiveJobCard key={job.id} job={job} index={idx} />
                 ))}
               </div>
             )}
@@ -416,8 +418,8 @@ export default function JobsDashboardPage() {
 
           {!isLoading && !error && pastJobs.length > 0 && (
             <div className="space-y-2.5">
-              {pastJobs.map((job) => (
-                <HistoryJobRow key={job.id} job={job} />
+              {pastJobs.map((job, idx) => (
+                <HistoryJobRow key={job.id} job={job} index={idx} />
               ))}
             </div>
           )}
