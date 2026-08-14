@@ -33,6 +33,30 @@ const PLANNER_PRICING_PER_MILLION_TOKENS = {
 export class PlannerService {
   private readonly logger = new Logger(PlannerService.name);
 
+  // mwapi.dev kadang balikin 429 "Upstream rate limit exceeded" -- ini rate limit di
+  // KONEKSI mwapi.dev sendiri ke Anthropic (kemungkinan dibagi rame-rame sama semua
+  // customer mereka), BUKAN limit akun kita sendiri (udah dicek langsung ke dashboard,
+  // jauh dari limit). Sifatnya transient, biasanya reda dalam hitungan detik/menit --
+  // jadi worth di-retry otomatis daripada langsung gagal dan user harus submit ulang manual.
+  private async fetchWithRetry(url: string, init: RequestInit, maxRetries = 3): Promise<Response> {
+    let lastRes: Response | undefined;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const res = await fetch(url, init);
+      if (res.status !== 429) return res;
+
+      lastRes = res;
+      if (attempt === maxRetries) break;
+
+      const retryAfterHeader = res.headers.get('retry-after');
+      const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
+      const delayMs = !isNaN(retryAfterSec) ? retryAfterSec * 1000 : 2000 * 2 ** attempt; // 2s, 4s, 8s fallback
+
+      this.logger.warn(`Planner API 429 (attempt ${attempt + 1}/${maxRetries + 1}), retry dalam ${delayMs}ms...`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+    return lastRes!;
+  }
+
   async generatePlan(idea: string, repoContext?: string): Promise<{ plan: string; branchSlug: string | null; plannerCostUsd: number | null }> {
     const baseUrl = process.env.PLANNER_API_BASE_URL || 'https://api.anthropic.com';
     const apiKey = process.env.PLANNER_API_KEY;
@@ -46,7 +70,7 @@ export class PlannerService {
       ? `Konteks repo target:\n${repoContext}\n\nIde dari user:\n${idea}`
       : `Ide dari user:\n${idea}`;
 
-    const res = await fetch(`${baseUrl}/v1/messages`, {
+    const res = await this.fetchWithRetry(`${baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

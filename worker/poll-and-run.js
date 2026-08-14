@@ -275,6 +275,29 @@ async function cloneForReview(targetRepo, branchName, sshKeyContent) {
   return { tmpDir, cloneDir, gitEnv, diff, changedFiles };
 }
 
+// mwapi.dev kadang balikin 429 "Upstream rate limit exceeded" -- limit di koneksi
+// mwapi.dev sendiri ke Anthropic (bukan limit akun kita), transient, worth di-retry
+// otomatis. Sama seperti PlannerService.fetchWithRetry di backend, dua-duanya pakai
+// upstream yang sama jadi dua-duanya bisa kena.
+async function fetchWithRetry(url, init, maxRetries = 3) {
+  let lastRes;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429) return res;
+
+    lastRes = res;
+    if (attempt === maxRetries) break;
+
+    const retryAfterHeader = res.headers.get('retry-after');
+    const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
+    const delayMs = !isNaN(retryAfterSec) ? retryAfterSec * 1000 : 2000 * 2 ** attempt;
+
+    log(`Planner API 429 (attempt ${attempt + 1}/${maxRetries + 1}), retry dalam ${delayMs}ms...`);
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return lastRes;
+}
+
 async function reviewDiffWithClaude(idea, diff) {
   const baseUrl = process.env.PLANNER_API_BASE_URL || 'https://api.anthropic.com';
   const apiKey = process.env.PLANNER_API_KEY;
@@ -298,7 +321,7 @@ Jawab HANYA dalam format JSON PERSIS seperti ini, tanpa teks lain di luar JSON, 
 
   const userMessage = `Task/ide asli:\n${idea}\n\nDiff yang mau di-review (git diff main...branch):\n${diff.slice(0, 60_000)}`;
 
-  const res = await fetch(`${baseUrl}/v1/messages`, {
+  const res = await fetchWithRetry(`${baseUrl}/v1/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
