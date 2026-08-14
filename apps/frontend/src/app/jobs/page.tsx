@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Rocket,
   XCircle,
+  Zap,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -25,7 +26,9 @@ interface Job {
   id: number;
   idea: string;
   status: 'DRAFTING_PLAN' | 'PLANNED' | 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED';
+  mode: 'MANUAL' | 'AUTO';
   branchName: string | null;
+  merged: boolean;
   createdAt: string;
 }
 
@@ -121,6 +124,12 @@ function HistoryJobRow({ job }: { job: Job }) {
         <StatusIcon className="h-3 w-3" />
         {status.label}
       </span>
+      {job.mode === 'AUTO' && (
+        <span className="badge shrink-0 border border-accent/20 bg-accent/10 text-accent">
+          <Zap className="h-3 w-3" />
+          {job.merged ? 'Auto-merged' : 'Auto'}
+        </span>
+      )}
       <p className="min-w-0 flex-1 truncate text-sm font-medium text-white">
         {job.idea}
       </p>
@@ -142,6 +151,7 @@ export default function JobsDashboardPage() {
 
   const [idea, setIdea] = useState('');
   const [targetRepoKey, setTargetRepoKey] = useState<'trackster' | 'ai-trackster'>('trackster');
+  const [mode, setMode] = useState<'manual' | 'auto'>('manual');
   const [submitting, setSubmitting] = useState(false);
   const [showSecretPrompt, setShowSecretPrompt] = useState(false);
   const [formError, setFormError] = useState('');
@@ -172,7 +182,7 @@ export default function JobsDashboardPage() {
     setSubmitting(true);
     setFormError('');
     try {
-      await api.post('/jobs', { idea, targetRepoKey }, secret);
+      await api.post('/jobs', { idea, targetRepoKey, mode }, secret);
       setIdea('');
       mutate();
     } catch (err: any) {
@@ -246,6 +256,51 @@ export default function JobsDashboardPage() {
                 <p className="text-xs leading-relaxed text-status-warning">
                   ⚠️ Self-edit: agent bakal ngedit source code alat ini sendiri. Review branch-nya
                   ekstra hati-hati sebelum merge.
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-1.5">
+              <label className="text-label text-muted-foreground">Mode</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMode('manual')}
+                  className={`rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
+                    mode === 'manual'
+                      ? 'border-accent/40 bg-accent/10 text-accent'
+                      : 'border-border bg-card text-muted-foreground hover:bg-hover'
+                  }`}
+                >
+                  Manual
+                  <p className="mt-0.5 text-xs font-normal opacity-80">
+                    Approve plan &amp; merge branch sendiri
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('auto')}
+                  className={`rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
+                    mode === 'auto'
+                      ? 'border-accent/40 bg-accent/10 text-accent'
+                      : 'border-border bg-card text-muted-foreground hover:bg-hover'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <Zap className="h-3.5 w-3.5" />
+                    Auto
+                  </span>
+                  <p className="mt-0.5 text-xs font-normal opacity-80">
+                    Auto-approve, auto-merge kalau lolos review Claude
+                  </p>
+                </button>
+              </div>
+              {mode === 'auto' && (
+                <p className="text-xs leading-relaxed text-status-warning">
+                  ⚠️ Auto mode: TIDAK ADA approval/review manual dari kamu sama sekali. Claude
+                  review diff sebelum merge, dan file sensitif (auth/deploy/CI) selalu fallback ke
+                  manual apapun hasil review-nya — tapi tetap ada resiko sesuatu lolos yang harusnya
+                  ketauan manusia.
                 </p>
               )}
             </div>

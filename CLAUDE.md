@@ -19,9 +19,12 @@ Web interface buat submit "ide besar" yang otomatis di-plan (Claude) lalu diekse
 
 ## Job Lifecycle
 
-`DRAFTING_PLAN` → (Claude generate spec) → `PLANNED` → (user review/edit, approve) → `QUEUED` → (worker pickup) → `RUNNING` → `DONE` (ada `branchName`) atau `FAILED`.
+Ada 2 mode per job (field `Job.mode`), dipilih user pas submit:
 
-Agent SELALU push ke branch baru (`ai-agent/job-<id>`), **TIDAK PERNAH** ke `main` — user wajib review manual sebelum merge.
+- **MANUAL** (default): `DRAFTING_PLAN` → (Claude generate spec) → `PLANNED` → (user review/edit, approve manual) → `QUEUED` → (worker pickup) → `RUNNING` → `DONE` (ada `branchName`) atau `FAILED`. Agent push ke branch baru, user WAJIB merge manual dari GitHub sendiri.
+- **AUTO**: `DRAFTING_PLAN` → (Claude generate spec) → **skip `PLANNED`, auto-approve langsung `QUEUED`** → `RUNNING` → `DONE` → worker minta Claude review diff-nya → kalau `SAFE` DAN nggak nyentuh file sensitif, **worker auto-merge ke `main`** (`Job.merged = true`). Lihat bagian "Auto mode" di bawah buat detail lengkap.
+
+Branch name sekarang deskriptif: `ai-agent/<branchSlug>-<id>` (slug dari Claude planner, field `BRANCH_SLUG:` di baris pertama response-nya sebelum spec) — fallback ke `ai-agent/job-<id>` polos kalau slug gagal ke-generate.
 
 ## Auth — 2 Lapis (jangan disederhanakan jadi 1 lapis lagi)
 
@@ -55,4 +58,16 @@ Halaman submit ide punya dropdown "Target repo": `Trackster` (default) atau `AI 
 
 Syarat biar opsi self-edit beneran jalan: public key `ai-trackster-deploy-key.pub` yang sama (yang udah didaftarin ke repo Trackster) HARUS didaftarin juga sebagai Deploy Key (Allow write access) di repo `trackster-ai` sendiri, dan `SELF_REPO_URL` diisi di `.env`. Kalau belum, opsi ini muncul di UI tapi bakal error pas job dieksekusi.
 
-**HATI-HATI ekstra kalau review branch hasil self-edit**, terutama perubahan di `entrypoint.sh`, `auth.guard.ts`, `agent-secret.guard.ts` — bug di situ bisa merusak alat yang dipakai buat perbaikannya sendiri. Tetap wajib review manual sebelum merge, jangan auto-merge apapun alasannya.
+**HATI-HATI ekstra kalau review branch hasil self-edit**, terutama perubahan di `entrypoint.sh`, `auth.guard.ts`, `agent-secret.guard.ts` — bug di situ bisa merusak alat yang dipakai buat perbaikannya sendiri. Di mode MANUAL tetap wajib review manual sebelum merge. Di mode AUTO, file-file ini (plus `docker-compose*`, `.github/workflows/*`, `.env*`, `worker/poll-and-run.js`) masuk hard guardrail sensitive-file — **selalu** fallback ke manual review apapun verdict Claude-nya, lihat bagian "Auto mode" di bawah.
+
+## Auto mode (auto-approve + auto-merge tanpa persetujuan user)
+
+Selain mode MANUAL (default), job bisa disubmit dengan mode **AUTO** — plan auto-approve begitu jadi (skip nunggu user klik Approve), dan begitu agent selesai kerja, **worker sendiri** (`worker/poll-and-run.js`, fungsi `reviewAndMaybeMerge`) yang mutusin apa branch-nya di-auto-merge ke `main` atau nggak, TANPA user diminta approve apapun. Alurnya:
+
+1. Worker clone repo, ambil diff `main...ai-agent/<branch>`.
+2. **Hard guardrail dulu, sebelum Claude sempat baca apapun**: kalau diff nyentuh file di `SENSITIVE_FILE_PATTERNS` (`entrypoint.sh`, `auth.guard.ts`, `agent-secret.guard.ts`, `docker-compose*.yml`, `.github/workflows/*`, `.env*`, atau `worker/poll-and-run.js` itu sendiri), auto-merge otomatis DIBATALKAN — `reviewVerdict` diisi `SKIPPED_SENSITIVE_FILE`, job tetap `DONE` nunggu review manual. Claude nggak punya wewenang override guardrail ini.
+3. Kalau lolos guardrail, worker kirim diff ke Claude (API sama dengan planner, `mwapi.dev`) minta verdict `SAFE`/`UNSAFE` + alasan singkat — disimpan di `Job.reviewVerdict`/`reviewReasoning`, ditampilkan di UI buat transparansi meski nggak ada approval gate.
+4. Kalau `SAFE`: worker langsung `git merge --no-ff` + `push origin main` pakai deploy key yang sama (SELF atau non-SELF tergantung target repo), set `Job.merged = true`.
+5. Kalau `UNSAFE` atau merge gagal (misal conflict): branch dibiarin apa adanya, `DONE` tanpa `merged`, user review manual seperti biasa.
+
+**PENTING soal batas kemampuan review ini**: Claude-review-diff itu SATU pass otomatis yang murah (baca doang, bukan generate), BUKAN pengganti penuh review manusia yang udah kejadian berkali-kali di session pengembangan tool ini nyelametin dari bug nyata (chat 405 karena fetch URL salah, job yang "selesai" tapi cuma ngerjain 1 dari 3 file yang diminta) — otomasi ini nurunin frekuensi manual review, bukan menghilangkan resiko-nya. `PLANNER_API_KEY` dkk WAJIB ada juga di `worker/.env` (duplikat dari root `.env`) biar fungsi review ini bisa jalan — worker proses Node terpisah dari backend, nggak bisa import langsung.

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Trash2, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Loader2, Trash2, CheckCircle2, Clock, AlertTriangle, Zap, ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import AgentSecretPrompt from '@/components/AgentSecretPrompt';
@@ -14,7 +14,11 @@ interface JobDetail {
   idea: string;
   plan: string | null;
   status: 'DRAFTING_PLAN' | 'PLANNED' | 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED';
+  mode: 'MANUAL' | 'AUTO';
   branchName: string | null;
+  merged: boolean;
+  reviewVerdict: string | null;
+  reviewReasoning: string | null;
   logOutput: string | null;
   errorMessage: string | null;
   targetRepo: string;
@@ -123,10 +127,18 @@ export default function JobDetailPage() {
                 Repo: <span className="font-mono text-foreground">{job.targetRepo}</span>
               </p>
             </div>
-            <span className={`badge ${status.className}`}>
-              <StatusIcon className="h-3 w-3" />
-              {status.label}
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              {job.mode === 'AUTO' && (
+                <span className="badge border border-accent/20 bg-accent/10 text-accent">
+                  <Zap className="h-3 w-3" />
+                  Auto
+                </span>
+              )}
+              <span className={`badge ${status.className}`}>
+                <StatusIcon className="h-3 w-3" />
+                {status.label}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -195,8 +207,37 @@ export default function JobDetailPage() {
         {job.branchName && (
           <div className="rounded-card border border-status-success/20 bg-status-success/5 p-4">
             <p className="text-sm text-status-success">
-              Selesai! Branch: <span className="font-mono">{job.branchName}</span>
+              {job.merged ? 'Auto-merged ke main! Branch: ' : 'Selesai! Branch: '}
+              <span className="font-mono">{job.branchName}</span>
             </p>
+          </div>
+        )}
+
+        {job.mode === 'AUTO' && job.reviewVerdict && (
+          <div
+            className={`rounded-card border p-4 ${
+              job.reviewVerdict === 'SAFE'
+                ? 'border-status-success/20 bg-status-success/5'
+                : job.reviewVerdict === 'UNSAFE'
+                  ? 'border-status-error/20 bg-status-error/5'
+                  : 'border-status-warning/20 bg-status-warning/5'
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              {job.reviewVerdict === 'SAFE' && <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-status-success" />}
+              {job.reviewVerdict === 'UNSAFE' && <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-status-error" />}
+              {job.reviewVerdict === 'SKIPPED_SENSITIVE_FILE' && (
+                <ShieldQuestion className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">
+                  Review Claude: {job.reviewVerdict === 'SAFE' ? 'Aman, auto-merge' : job.reviewVerdict === 'UNSAFE' ? 'Dianggap tidak aman' : 'Nyentuh file sensitif, wajib manual'}
+                </p>
+                {job.reviewReasoning && (
+                  <p className="mt-1 text-sm text-muted-foreground">{job.reviewReasoning}</p>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
