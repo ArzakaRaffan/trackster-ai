@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { api } from '../../lib/api';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -32,17 +33,10 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -58,76 +52,30 @@ export default function ChatPage() {
     setError('');
     setLoading(true);
 
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     try {
-      const res = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages, model }),
-        credentials: 'include',
-        signal: controller.signal,
+      const data = await api.post<{ reply: string }>('/chat', {
+        messages: apiMessages,
+        model,
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `HTTP ${res.status}`);
-      }
+      setMessages((prev) => {
+        const updated = [...prev];
+        const lastIndex = updated.length - 1;
+        const last = updated[lastIndex];
 
-      if (!res.body) {
-        throw new Error('No response body');
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-
-          const raw = trimmed.slice(5).trim();
-          if (raw === '[DONE]') continue;
-
-          let json: any;
-          try {
-            json = JSON.parse(raw);
-          } catch {
-            continue;
-          }
-
-          const delta = json?.choices?.[0]?.delta?.content ?? json?.reply ?? '';
-          if (!delta) continue;
-
-          setMessages((prev) => {
-            const updated = [...prev];
-            const lastIndex = updated.length - 1;
-            const last = updated[lastIndex];
-
-            if (last && last.role === 'assistant') {
-              updated[lastIndex] = { ...last, content: last.content + delta };
-            }
-
-            return updated;
-          });
+        if (last && last.role === 'assistant') {
+          updated[lastIndex] = { ...last, content: data.reply };
+        } else {
+          // Should not happen, but keep the UI consistent if it does.
+          updated.push({ role: 'assistant', content: data.reply });
         }
-      }
+
+        return updated;
+      });
     } catch (err: any) {
-      if (err?.name !== 'AbortError') {
-        setError(err?.message || 'Gagal kirim pesan');
-      }
+      setError(err?.message || 'Gagal kirim pesan');
     } finally {
       setLoading(false);
-      abortRef.current = null;
     }
   };
 
