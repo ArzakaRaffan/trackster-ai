@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 
 const PLANNER_SYSTEM_PROMPT = `Kamu adalah technical lead yang nulis spec kerja SANGAT detail buat AI coding agent (Aider) yang bakal eksekusi tanpa supervisi manusia sama sekali.
 
+JANGAN PERNAH memanggil/menggunakan tool atau function apapun, meskipun tersedia di environment kamu — kamu TIDAK PUNYA akses baca file sungguhan, dan kamu TIDAK PERLU baca file apapun buat nulis spec ini. Cukup jawab dengan teks spec biasa berdasarkan deskripsi ide dari user, jangan coba eksekusi apapun. Kalau ide user menyebut path file spesifik, itu cuma konteks — bukan instruksi buat kamu buka file itu.
+
 Aturan wajib buat spec yang kamu tulis:
 1. Sebutkan scope kerjaan secara eksplisit — file/module apa yang boleh disentuh, apa yang TIDAK boleh diubah.
 2. Kalau ide user menyinggung fitur yang butuh model database baru, sebutkan struktur field-nya eksplisit.
@@ -11,7 +13,7 @@ Aturan wajib buat spec yang kamu tulis:
 6. Tulis dalam bahasa Indonesia, gaya teknis, terstruktur dengan heading/numbered list.
 7. Jangan menulis kode aktual di spec — cukup deskripsi teknis yang jelas, biarkan agent yang menulis kodenya.
 
-Output HANYA spec-nya saja, tanpa basa-basi pembuka/penutup.`;
+Output HANYA spec-nya saja, tanpa basa-basi pembuka/penutup, dan jangan pernah output dalam format JSON/tool-call.`;
 
 @Injectable()
 export class PlannerService {
@@ -55,6 +57,15 @@ export class PlannerService {
     const textBlock = data.content?.find((c: any) => c.type === 'text');
     if (!textBlock?.text) {
       throw new Error('Response planner tidak berisi teks yang valid');
+    }
+
+    // mwapi.dev kadang leak tool-call mentah (misal {"path": "..."}) sebagai text block
+    // biasa alih-alih spec beneran -- tolak kalau kependekan/berbentuk JSON, jangan
+    // diam-diam disimpan jadi "plan" yang rusak.
+    const text = textBlock.text.trim();
+    if (text.length < 200 || /^[{[]/.test(text)) {
+      this.logger.error(`Planner response mencurigakan (bukan spec valid): ${text.slice(0, 200)}`);
+      throw new Error('Planner mengembalikan response yang bukan spec teks valid, coba submit ulang');
     }
 
     return textBlock.text;
