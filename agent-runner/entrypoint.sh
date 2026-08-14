@@ -35,29 +35,63 @@ export OPENAI_API_KEY="$DEEPSEEK_API_KEY"
 export OPENAI_API_BASE="$DEEPSEEK_BASE_URL"
 AIDER_MODEL="openai/${DEEPSEEK_MODEL:-deepseek-v4-flash}"
 
-echo "=== Menjalankan Aider (model: $AIDER_MODEL) ==="
+# --- Kumpulkan source file yang boleh diedit Aider, dan kasih SEMUANYA sebagai
+# argumen posisional di awal. Aider CUMA mengedit file yang eksplisit "ditambahkan
+# ke chat" — kalau prompt cuma menyebut sebagian file (apalagi dengan bahasa
+# hedge kayak "misalnya app/page.tsx atau setara"), Aider yang taat aturan bakal
+# menolak menyentuh file lain dan malah nulis "tolong tambahkan file itu ke chat"
+# di outputnya. Run ini non-interaktif (--message-file, sekali jalan) jadi TIDAK
+# ADA yang bisa menjawab permintaan itu — build tetap lolos (karena Aider cuma
+# berhasil edit token/config yang "ketemu"), job dilaporkan DONE, padahal
+# hampir tidak ada perubahan nyata. Fix: jangan andalkan Aider menebak file dari
+# teks prompt, kasih daftar file lengkap secara eksplisit di command line.
+mapfile -t EDITABLE_FILES < <(find apps -type f \
+  \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.css" -o -name "*.json" \) \
+  -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.next/*" \
+  -not -name "package-lock.json" \
+  2>/dev/null)
 
-MAX_ATTEMPTS="${MAX_AIDER_MESSAGES:-40}"
+echo "=== Menjalankan Aider (model: $AIDER_MODEL, ${#EDITABLE_FILES[@]} file di-add ke chat) ==="
+
+# NOTE: MAX_AIDER_MESSAGES cuma dipakai buat nampilin info, TIDAK mengontrol
+# apapun secara aktual — loop verifikasi build di bawah selalu di-cap 3x,
+# dan Aider sendiri tidak pernah diberi flag apapun terkait variable ini.
+# Kalau maksudnya membatasi jumlah pesan/turn otonom Aider per invocation,
+# itu belum diimplementasikan — perlu dicek flag Aider yang sesuai kalau itu
+# yang diinginkan.
+MAX_BUILD_RETRIES=3
 ATTEMPT=1
 BUILD_OK=0
 
 # Attempt pertama: eksekusi spec penuh
 aider --model "$AIDER_MODEL" --yes-always --no-check-update \
-  --message-file /tmp/prompt.txt 2>&1
+  --message-file /tmp/prompt.txt "${EDITABLE_FILES[@]}" 2>&1
 
 # --- Loop verifikasi build, feed error balik ke Aider kalau gagal ---
-while [ $ATTEMPT -le 3 ]; do
+while [ $ATTEMPT -le $MAX_BUILD_RETRIES ]; do
   echo "=== Verifikasi build (percobaan $ATTEMPT) ==="
 
+  # PENTING: tangkap exit code masing-masing build LANGSUNG setelah command-nya
+  # jalan, jangan andalkan `$?` di akhir — kalau kedua project ada (seperti di
+  # repo ini), `$?` cuma bakal reflect if-block TERAKHIR (frontend), jadi
+  # backend build yang gagal bisa lolos tanpa ketahuan dan ke-push begitu saja.
   BUILD_LOG=""
+  BUILD_FAILED=0
+
   if [ -f "apps/backend/package.json" ]; then
-    BUILD_LOG+=$(cd apps/backend && npm install --silent 2>&1 && npm run build 2>&1)
+    BACKEND_LOG=$(cd apps/backend && npm install --silent 2>&1 && npm run build 2>&1)
+    BACKEND_STATUS=$?
+    BUILD_LOG+="$BACKEND_LOG"
+    [ $BACKEND_STATUS -ne 0 ] && BUILD_FAILED=1
   fi
   if [ -f "apps/frontend/package.json" ]; then
-    BUILD_LOG+=$(cd apps/frontend && npm install --silent 2>&1 && npx tsc --noEmit 2>&1)
+    FRONTEND_LOG=$(cd apps/frontend && npm install --silent 2>&1 && npx tsc --noEmit 2>&1)
+    FRONTEND_STATUS=$?
+    BUILD_LOG+="$FRONTEND_LOG"
+    [ $FRONTEND_STATUS -ne 0 ] && BUILD_FAILED=1
   fi
 
-  if [ $? -eq 0 ]; then
+  if [ $BUILD_FAILED -eq 0 ]; then
     echo "Build OK."
     BUILD_OK=1
     break
@@ -66,7 +100,8 @@ while [ $ATTEMPT -le 3 ]; do
   echo "Build gagal, feed error balik ke Aider..."
   echo "$BUILD_LOG" > /tmp/build-error.txt
   aider --model "$AIDER_MODEL" --yes-always --no-check-update \
-    --message "Build/typecheck gagal dengan error berikut, perbaiki: $(cat /tmp/build-error.txt | tail -100)" 2>&1
+    --message "Build/typecheck gagal dengan error berikut, perbaiki: $(cat /tmp/build-error.txt | tail -100)" \
+    "${EDITABLE_FILES[@]}" 2>&1
 
   ATTEMPT=$((ATTEMPT + 1))
 done
@@ -87,6 +122,6 @@ if [ $BUILD_OK -eq 1 ]; then
   echo "=== SELESAI: build lolos ==="
   exit 0
 else
-  echo "=== SELESAI DENGAN WARNING: build masih gagal setelah $MAX_ATTEMPTS percobaan, tapi progress sudah di-push ke branch ==="
+  echo "=== SELESAI DENGAN WARNING: build masih gagal setelah $MAX_BUILD_RETRIES percobaan, tapi progress sudah di-push ke branch ==="
   exit 1
 fi
