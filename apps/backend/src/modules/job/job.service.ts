@@ -12,10 +12,17 @@ export class JobService {
     private planner: PlannerService,
   ) {}
 
-  async create(idea: string) {
-    const targetRepo = process.env.TARGET_REPO_URL;
+  async create(idea: string, targetRepoKey: 'trackster' | 'ai-trackster' = 'trackster') {
+    // Resolve dari env, BUKAN terima url mentah dari client -- biar job nggak bisa
+    // diarahkan clone/push ke repo sembarangan lewat request yang dimanipulasi.
+    const targetRepo =
+      targetRepoKey === 'ai-trackster' ? process.env.SELF_REPO_URL : process.env.TARGET_REPO_URL;
     if (!targetRepo) {
-      throw new BadRequestException('TARGET_REPO_URL belum di-konfigurasi di backend');
+      throw new BadRequestException(
+        targetRepoKey === 'ai-trackster'
+          ? 'SELF_REPO_URL belum di-konfigurasi di backend -- self-edit belum bisa dipakai'
+          : 'TARGET_REPO_URL belum di-konfigurasi di backend',
+      );
     }
 
     const job = await this.prisma.job.create({

@@ -48,6 +48,10 @@ Agent SELALU push ke branch baru (`ai-agent/job-<id>`), **TIDAK PERNAH** ke `mai
 - Migration Prisma HARUS di-generate manual dan di-commit (`prisma migrate dev --name init` dari lokal ke DB temp) — `prisma migrate deploy` di CMD Docker itu no-op kalau folder `prisma/migrations` kosong/nggak ada, jadi database nggak ke-provision sama sekali padahal container jalan normal.
 - Dockerfile frontend WAJIB set `ENV PORT=3100` (dan `HOSTNAME=0.0.0.0`) — Next.js standalone `server.js` default listen di port 3000 apapun isi `EXPOSE`, jadi kalau nggak di-set nginx bakal 502 connect refused ke port yang salah.
 
-## Fitur yang Belum Diimplementasi (kalau ditanya/diminta)
+## Self-edit (repo AI Trackster sendiri sebagai target)
 
-- **Self-edit**: `TARGET_REPO_URL` saat ini hardcoded ke satu repo (Trackster) di `.env`. Bisa diperluas jadi dropdown pilihan repo (termasuk repo AI Trackster sendiri) di halaman submit ide. Kalau ini dikerjain: HATI-HATI ekstra buat file sensitif (`entrypoint.sh`, `auth.guard.ts`, `agent-secret.guard.ts`) kalau target-nya self-edit — bug di situ bisa merusak alat yang dipakai buat perbaikannya sendiri. Tetap wajib review manual sebelum merge, jangan auto-merge apapun alasannya.
+Halaman submit ide punya dropdown "Target repo": `Trackster` (default) atau `AI Trackster (self-edit)`. Backend resolve pilihan ini ke `TARGET_REPO_URL` atau `SELF_REPO_URL` di env — **client TIDAK PERNAH kirim url mentah**, cuma key `'trackster' | 'ai-trackster'`, biar job nggak bisa diarahkan clone/push ke repo sembarangan lewat request yang dimanipulasi.
+
+Syarat biar opsi self-edit beneran jalan: public key `ai-trackster-deploy-key.pub` yang sama (yang udah didaftarin ke repo Trackster) HARUS didaftarin juga sebagai Deploy Key (Allow write access) di repo `trackster-ai` sendiri, dan `SELF_REPO_URL` diisi di `.env`. Kalau belum, opsi ini muncul di UI tapi bakal error pas job dieksekusi.
+
+**HATI-HATI ekstra kalau review branch hasil self-edit**, terutama perubahan di `entrypoint.sh`, `auth.guard.ts`, `agent-secret.guard.ts` — bug di situ bisa merusak alat yang dipakai buat perbaikannya sendiri. Tetap wajib review manual sebelum merge, jangan auto-merge apapun alasannya.

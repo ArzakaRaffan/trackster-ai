@@ -37,6 +37,7 @@ const fetcher = (path: string) => api.get<Job[]>(path);
 export default function HomePage() {
   const { data: jobs, mutate } = useSWR('/jobs', fetcher, { refreshInterval: 5000 });
   const [idea, setIdea] = useState('');
+  const [targetRepoKey, setTargetRepoKey] = useState<'trackster' | 'ai-trackster'>('trackster');
   const [submitting, setSubmitting] = useState(false);
   const [showSecretPrompt, setShowSecretPrompt] = useState(false);
   const [error, setError] = useState('');
@@ -52,7 +53,7 @@ export default function HomePage() {
     setSubmitting(true);
     setError('');
     try {
-      await api.post('/jobs', { idea }, secret);
+      await api.post('/jobs', { idea, targetRepoKey }, secret);
       setIdea('');
       mutate();
     } catch (err: any) {
@@ -81,6 +82,25 @@ export default function HomePage() {
           value={idea}
           onChange={(e) => setIdea(e.target.value)}
         />
+
+        <div className="space-y-1">
+          <label className="text-xs text-neutral-400">Target repo</label>
+          <select
+            value={targetRepoKey}
+            onChange={(e) => setTargetRepoKey(e.target.value as 'trackster' | 'ai-trackster')}
+            className="bg-neutral-900 border border-neutral-800 rounded-lg px-2 py-1.5 text-sm block"
+          >
+            <option value="trackster">Trackster</option>
+            <option value="ai-trackster">AI Trackster (self-edit)</option>
+          </select>
+          {targetRepoKey === 'ai-trackster' && (
+            <p className="text-xs text-amber-400">
+              ⚠️ Self-edit: agent bakal ngedit source code alat ini sendiri. Review branch-nya
+              ekstra hati-hati sebelum merge, terutama file terkait auth/deploy.
+            </p>
+          )}
+        </div>
+
         <button
           type="submit"
           disabled={submitting || idea.trim().length < 5}
