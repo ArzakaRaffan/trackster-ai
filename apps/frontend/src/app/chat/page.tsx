@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import type { KeyboardEvent } from 'react';
 import Link from 'next/link';
 
 interface Message {
@@ -17,7 +18,6 @@ const STATUS_TEXTS = [
   'Hampir selesai...',
 ];
 
-// Sesuaikan daftar ini kalau model yang tersedia di reseller kamu berubah
 const MODELS = [
   { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
   { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
@@ -203,7 +203,7 @@ export default function ChatPage() {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -218,7 +218,7 @@ export default function ChatPage() {
     !hasStarted;
 
   return (
-    <div className="flex flex-col h-screen -mx-4 -my-6 overflow-hidden bg-[#121212] text-white">
+    <div className="flex h-screen -mx-4 -my-6 flex-col overflow-hidden bg-neutral-950 text-white">
       <style>{`
         @keyframes fadeInUp {
           from {
@@ -240,14 +240,19 @@ export default function ChatPage() {
         }
       `}</style>
 
-      {/* Header */}
-      <header className="flex items-center justify-between gap-2 border-b border-[#252525] bg-[rgba(18,18,18,0.86)] px-4 py-3 backdrop-blur-md">
+      <header className="flex items-center justify-between gap-2 border-b border-neutral-800 bg-neutral-950/80 px-4 py-3 backdrop-blur-md">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-sm text-[#b3b3b3] transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1ed760]/30 rounded-md px-2 py-1"
+          className="focus-ring inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm text-neutral-400 transition hover:text-white"
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           <span className="hidden sm:inline">Kembali</span>
         </Link>
@@ -255,11 +260,11 @@ export default function ChatPage() {
         <h1 className="flex-1 text-center text-sm font-semibold text-white">Chat</h1>
 
         <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-[#7c7c7c] sm:inline">Model</span>
+          <span className="hidden text-xs text-neutral-500 sm:inline">Model</span>
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className="rounded-xl border border-[#252525] bg-[#1f1f1f] px-3 py-1.5 text-xs text-[#b3b3b3] focus:border-[#1ed760] focus:outline-none focus:ring-2 focus:ring-[#1ed760]/30"
+            className="focus-ring rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-300"
             aria-label="Pilih model AI"
           >
             {MODELS.map((m) => (
@@ -271,16 +276,9 @@ export default function ChatPage() {
         </div>
       </header>
 
-      {/* Messages */}
-      <main
-        className="flex-1 overflow-y-auto px-3 py-4 sm:px-4"
-        role="log"
-        aria-live="polite"
-      >
+      <main className="flex-1 overflow-y-auto px-3 py-4 sm:px-4" role="log" aria-live="polite">
         {messages.length === 0 && (
-          <p className="mt-10 text-center text-sm text-[#7c7c7c]">
-            Mulai ngobrol...
-          </p>
+          <p className="mt-10 text-center text-sm text-neutral-500">Mulai ngobrol...</p>
         )}
 
         {messages.map((msg, i) => {
@@ -293,7 +291,7 @@ export default function ChatPage() {
               }`}
             >
               {!isUser && (
-                <div className="mb-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#1f1f1f] text-[10px] font-bold text-[#1ed760]">
+                <div className="mb-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-[10px] font-bold text-emerald-400">
                   AI
                 </div>
               )}
@@ -305,12 +303,12 @@ export default function ChatPage() {
                 <div
                   className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
                     isUser
-                      ? 'rounded-br-md bg-[#1f1f1f] text-white'
-                      : 'rounded-bl-md border border-[#252525] bg-[#181818] text-white'
+                      ? 'rounded-br-md bg-neutral-800 text-white'
+                      : 'rounded-bl-md border border-neutral-800 bg-neutral-900 text-white'
                   }`}
                 >
                   {showStatus && i === messages.length - 1 ? (
-                    <span className="italic text-[#b3b3b3]">
+                    <span className="italic text-neutral-400">
                       {STATUS_TEXTS[statusIndex]}
                     </span>
                   ) : (
@@ -319,18 +317,14 @@ export default function ChatPage() {
                 </div>
 
                 {msg.content && (
-                  <div
-                    className={`mt-1 flex items-center gap-2 ${
-                      isUser ? 'justify-end' : 'justify-start'
-                    }`}
-                  >
-                    <span className="text-[10px] text-[#7c7c7c] tabular-nums">
+                  <div className={`mt-1 flex items-center gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                    <span className="text-[10px] text-neutral-500 tabular-nums">
                       {msg.timestamp}
                     </span>
                     <button
                       type="button"
                       onClick={() => handleCopy(msg.content, i)}
-                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[#b3b3b3] transition-colors hover:bg-[#252525] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1ed760]/30"
+                      className="focus-ring inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-400 transition hover:bg-neutral-800 hover:text-white"
                       aria-label="Salin pesan"
                       title="Salin pesan"
                     >
@@ -365,11 +359,10 @@ export default function ChatPage() {
         <div ref={scrollRef} />
       </main>
 
-      {/* Input */}
-      <footer className="border-t border-[#252525] bg-[rgba(18,18,18,0.92)] px-3 py-3 backdrop-blur-md sm:px-4 pb-[env(safe-area-inset-bottom)]">
+      <footer className="border-t border-neutral-800 bg-neutral-950/80 px-3 py-3 backdrop-blur-md sm:px-4 pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-end gap-2">
           <textarea
-            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl border-0 bg-[#181818] px-4 py-2.5 text-sm leading-relaxed text-white placeholder:text-[#7c7c7c] ring-1 ring-inset ring-[#7c7c7c] focus:ring-2 focus:ring-[#1ed760] disabled:opacity-60"
+            className="focus-ring max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl border-0 bg-neutral-900 px-4 py-2.5 text-sm leading-relaxed text-white placeholder:text-neutral-500 focus:ring-2 focus:ring-emerald-500/50 disabled:opacity-60"
             rows={1}
             placeholder="Tulis pesan..."
             value={input}
@@ -382,7 +375,7 @@ export default function ChatPage() {
             type="button"
             onClick={handleSend}
             disabled={loading || !input.trim()}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1ed760] text-[#121212] shadow transition-all duration-200 hover:bg-[#1ed760] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1ed760]/50 disabled:cursor-not-allowed disabled:opacity-40 active:scale-94"
+            className="focus-ring inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-neutral-950 shadow transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40 active:scale-95"
             aria-label="Kirim pesan"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
