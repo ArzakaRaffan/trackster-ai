@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
@@ -11,7 +12,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
@@ -27,33 +28,63 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm bg-neutral-900 p-6 rounded-xl border border-neutral-800">
-        <h1 className="text-xl font-bold mb-1">AI Trackster</h1>
-        <p className="text-sm text-neutral-400 mb-6">Masuk buat lanjut</p>
+    <div className="flex min-h-[70vh] items-center justify-center px-4 py-10">
+      <form
+        onSubmit={handleSubmit}
+        className="glass-card w-full max-w-md rounded-2xl p-6 shadow-2xl sm:p-8"
+      >
+        <div className="mb-6">
+          <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-neutral-950">
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 3v3m6.364-2.364l-2.121 2.121M21 12h-3m2.364 6.364l-2.121-2.121M12 21v-3m-6.364 2.364l2.121-2.121M3 12h3m-2.364-6.364l2.121 2.121"
+              />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-white">AI Trackster</h1>
+          <p className="mt-1 text-sm text-neutral-400">Masuk buat lanjut</p>
+        </div>
 
-        <label className="block text-sm mb-1">Username</label>
+        <label className="mb-1 block text-sm font-medium text-neutral-300">
+          Username
+        </label>
         <input
-          className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 mb-4 text-sm"
+          className="focus-ring mb-4 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           autoFocus
+          autoComplete="username"
         />
 
-        <label className="block text-sm mb-1">Password</label>
+        <label className="mb-1 block text-sm font-medium text-neutral-300">
+          Password
+        </label>
         <input
           type="password"
-          className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 mb-4 text-sm"
+          className="focus-ring mb-4 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
         />
 
-        {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+        {error && (
+          <p className="mb-4 rounded-lg border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-400">
+            {error}
+          </p>
+        )}
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-emerald-600 text-white rounded-lg py-2 font-medium disabled:opacity-50"
+          className="w-full rounded-lg bg-emerald-500 py-2.5 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? 'Masuk...' : 'Masuk'}
         </button>
