@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 
 interface Props {
   title: string;
@@ -11,42 +12,44 @@ interface Props {
 export default function AgentSecretPrompt({ title, onConfirm, onCancel }: Props) {
   const [secret, setSecret] = useState('');
 
-  const handleConfirm = (e: React.FormEvent) => {
+  const handleConfirm = (e: FormEvent) => {
     e.preventDefault();
     if (!secret) return;
     onConfirm(secret);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center px-4 z-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
       <form
         onSubmit={handleConfirm}
-        className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-xl p-5"
+        className="glass-card w-full max-w-sm rounded-2xl p-6 shadow-2xl"
       >
-        <h2 className="text-sm font-bold mb-1">{title}</h2>
-        <p className="text-xs text-neutral-400 mb-4">
+        <h2 className="text-base font-bold text-white">{title}</h2>
+        <p className="mt-2 text-sm text-neutral-400">
           Aksi ini bisa bikin agent beneran ngedit kode. Masukin password agent buat lanjut.
         </p>
+
         <input
           type="password"
           autoFocus
-          className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm mb-4"
+          className="focus-ring mt-4 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
           placeholder="Password agent"
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
         />
-        <div className="flex gap-2">
+
+        <div className="mt-5 flex gap-3">
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 border border-neutral-700 rounded-lg py-2 text-sm"
+            className="focus-ring flex-1 rounded-lg border border-neutral-700 px-4 py-2 text-sm text-neutral-200 transition hover:bg-neutral-800"
           >
             Batal
           </button>
           <button
             type="submit"
             disabled={!secret}
-            className="flex-1 bg-emerald-600 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40"
+            className="focus-ring flex-1 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Lanjut
           </button>
