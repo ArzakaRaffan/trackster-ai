@@ -1,0 +1,26 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd ~/ai-trackster
+            git fetch origin
+            git reset --hard origin/main
+            cd worker && npm install && cd ..
+            sudo -n systemctl restart ai-trackster-worker
+            docker compose build ai-backend
+            docker compose build ai-frontend
+            docker compose up -d
+            docker image prune -f
