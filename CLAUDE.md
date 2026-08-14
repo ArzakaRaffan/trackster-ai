@@ -51,6 +51,7 @@ Branch name sekarang deskriptif: `ai-agent/<branchSlug>-<id>` (slug dari Claude 
 - `worker/` butuh `prisma/schema.prisma` sendiri (duplikat dari `apps/backend/prisma/schema.prisma`) plus `postinstall: prisma generate` di `package.json`, karena `@prisma/client` nggak otomatis generate tanpa schema dan tanpa itu worker crash loop (`did not initialize yet`).
 - Migration Prisma HARUS di-generate manual dan di-commit (`prisma migrate dev --name init` dari lokal ke DB temp) — `prisma migrate deploy` di CMD Docker itu no-op kalau folder `prisma/migrations` kosong/nggak ada, jadi database nggak ke-provision sama sekali padahal container jalan normal.
 - Dockerfile frontend WAJIB set `ENV PORT=3100` (dan `HOSTNAME=0.0.0.0`) — Next.js standalone `server.js` default listen di port 3000 apapun isi `EXPOSE`, jadi kalau nggak di-set nginx bakal 502 connect refused ke port yang salah.
+- **Pernah ketemu kasus Docker build cache nyangkut folder `prisma/migrations` yang lama** meski file di disk udah benar dan CD jalan normal (`docker compose build ai-backend` "sukses" tapi migration baru nggak ke-apply, backend log cuma bilang "2 migrations found" padahal ada 3 folder di git). Fix: `docker compose build --no-cache ai-backend`. **Selalu verifikasi migration beneran ke-apply setelah deploy yang nambah migration baru** (`docker exec trackster-postgres-1 psql -U trackster -d ai_trackster -c '\d "NamaTabel"'`), jangan cuma percaya CD "sukses" — biar nggak keulang insiden kolom hilang diam-diam.
 
 ## Self-edit (repo AI Trackster sendiri sebagai target)
 
