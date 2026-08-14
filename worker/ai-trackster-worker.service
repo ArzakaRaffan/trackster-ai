@@ -7,7 +7,6 @@ Requires=docker.service
 Type=simple
 User=arzakaraffan
 WorkingDirectory=/home/arzakaraffan/ai-trackster/worker
-EnvironmentFile=/home/arzakaraffan/ai-trackster/worker/.env
 ExecStart=/usr/bin/node /home/arzakaraffan/ai-trackster/worker/poll-and-run.js
 Restart=on-failure
 RestartSec=10

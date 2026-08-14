@@ -10,6 +10,8 @@
  * 5. Update Job jadi DONE (dengan branchName) atau FAILED (dengan errorMessage)
  */
 
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+
 const { PrismaClient } = require('@prisma/client');
 const { spawn } = require('child_process');
 const fs = require('fs');
