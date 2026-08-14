@@ -1,0 +1,9 @@
+{
+  "name": "ai-trackster-worker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "poll-and-run.js",
+  "dependencies": {
+    "@prisma/client": "^5.19.0"
+  }
+}

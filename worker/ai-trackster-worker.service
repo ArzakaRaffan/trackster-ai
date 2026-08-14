@@ -1,0 +1,16 @@
+[Unit]
+Description=AI Trackster Worker - polls job queue, runs isolated agent containers
+After=docker.service network.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=arzakaraffan
+WorkingDirectory=/home/arzakaraffan/ai-trackster/worker
+EnvironmentFile=/home/arzakaraffan/ai-trackster/worker/.env
+ExecStart=/usr/bin/node /home/arzakaraffan/ai-trackster/worker/poll-and-run.js
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

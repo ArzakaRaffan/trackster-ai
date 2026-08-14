@@ -1,0 +1,48 @@
+services:
+  backend:
+    build:
+      context: ./apps/backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      AGENT_ACCESS_SECRET: ${AGENT_ACCESS_SECRET}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN}
+      FRONTEND_URL: ${FRONTEND_URL}
+      TARGET_REPO_URL: ${TARGET_REPO_URL}
+      PLANNER_API_KEY: ${PLANNER_API_KEY}
+      PLANNER_API_BASE_URL: ${PLANNER_API_BASE_URL}
+      PLANNER_MODEL: ${PLANNER_MODEL}
+      CHAT_API_KEY: ${CHAT_API_KEY}
+      CHAT_API_BASE_URL: ${CHAT_API_BASE_URL}
+      BACKEND_PORT: 4100
+      NODE_ENV: production
+    expose:
+      - '4100'
+    networks:
+      - shared-web-net
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - '3100'
+    networks:
+      - shared-web-net
+
+# PENTING: app ini SENGAJA tidak punya nginx/certbot sendiri.
+# Nginx yang dipakai adalah nginx milik Trackster (di repo terpisah), yang di-extend
+# konfigurasinya buat proxy ke container backend/frontend di sini juga.
+# Alasan: satu VPS cuma bisa ada satu proses yang bind port 80/443 di host.
+#
+# Network "shared-web-net" ini harus dibuat manual sekali (`docker network create shared-web-net`),
+# dan nginx Trackster juga harus join network yang sama (lihat CATATAN-INTEGRASI-TRACKSTER.md).
+networks:
+  shared-web-net:
+    external: true
+

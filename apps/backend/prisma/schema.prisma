@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+}
+
+model Job {
+  id          Int       @id @default(autoincrement())
+  idea        String // Ide singkat dari user, mentah
+  plan        String? // Technical spec detail hasil generate Claude, editable oleh user sebelum approve
+  status      JobStatus @default(DRAFTING_PLAN)
+  branchName  String? // Nama branch git yang dibikin agent, diisi begitu mulai RUNNING
+  logOutput   String? // Full log dari Aider setelah selesai (batch, bukan streaming realtime)
+  errorMessage String?
+  targetRepo  String // URL git repo yang mau dikerjain (misal repo Trackster)
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+}
+
+enum JobStatus {
+  DRAFTING_PLAN // Baru submit ide, lagi nunggu/proses generate plan dari Claude
+  PLANNED // Plan udah jadi, nunggu user approve
+  QUEUED // User approve, nunggu worker pickup
+  RUNNING // Lagi dieksekusi di container
+  DONE // Selesai, ada branchName buat direview
+  FAILED // Ada error, cek errorMessage/logOutput
+}
