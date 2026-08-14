@@ -62,7 +62,9 @@ module.exports = {
         row: '6px',
         card: '8px',
         hero: '10px',
+        pill: '9999px',
         'pill-lg': '500px',
+        circle: '50%',
       },
       boxShadow: {
         dropdown: 'rgba(0, 0, 0, 0.3) 0 8px 8px',
