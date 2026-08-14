@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import {
   AlertTriangle,
@@ -17,6 +18,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import AgentSecretPrompt from '@/components/AgentSecretPrompt';
 
 interface Job {
@@ -135,11 +137,29 @@ export default function JobsDashboardPage() {
     refreshInterval: 5000,
   });
 
+  const router = useRouter();
+  const { user, loading: userLoading } = useCurrentUser();
+
   const [idea, setIdea] = useState('');
   const [targetRepoKey, setTargetRepoKey] = useState<'trackster' | 'ai-trackster'>('trackster');
   const [submitting, setSubmitting] = useState(false);
   const [showSecretPrompt, setShowSecretPrompt] = useState(false);
   const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    if (userLoading) return;
+    if (!user || user.username !== 'arzaka') {
+      router.replace('/');
+    }
+  }, [user, userLoading, router]);
+
+  if (userLoading || !user || user.username !== 'arzaka') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
+        Memuat...
+      </div>
+    );
+  }
 
   const handleSubmitClick = (e: React.FormEvent) => {
     e.preventDefault();

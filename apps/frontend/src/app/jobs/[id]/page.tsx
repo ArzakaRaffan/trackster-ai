@@ -6,6 +6,7 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, Trash2, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import AgentSecretPrompt from '@/components/AgentSecretPrompt';
 
 interface JobDetail {
@@ -36,6 +37,7 @@ const STATUS_STYLES: Record<JobDetail['status'], { label: string; className: str
 export default function JobDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user, loading: userLoading } = useCurrentUser();
   const id = params.id;
 
   const { data: job, mutate } = useSWR(`/jobs/${id}`, fetcher, {
@@ -51,6 +53,21 @@ export default function JobDetailPage() {
   useEffect(() => {
     if (job?.plan) setPlanDraft(job.plan);
   }, [job?.plan]);
+
+  useEffect(() => {
+    if (userLoading) return;
+    if (!user || user.username !== 'arzaka') {
+      router.replace('/');
+    }
+  }, [user, userLoading, router]);
+
+  if (userLoading || !user || user.username !== 'arzaka') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
+        Memuat...
+      </div>
+    );
+  }
 
   if (!job) {
     return (
