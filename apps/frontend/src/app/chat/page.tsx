@@ -11,12 +11,18 @@ interface Message {
 
 // Sesuaikan daftar ini kalau model yang tersedia di reseller kamu berubah
 const MODELS = [
-  { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
   { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+  { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+  { value: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro' },
   { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
   { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
+  { value: 'glm-5.2', label: 'GLM 5.2' },
   { value: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+  { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+  { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
   { value: 'kimi-k2.7-code', label: 'Kimi K2.7 Code' },
+  { value: 'kimi-k2.7-code-highspeed', label: 'Kimi K2.7 Code (Highspeed)' },
+  { value: 'kimi-k3', label: 'Kimi K3' },
   { value: 'minimax-m3', label: 'MiniMax M3' },
 ];
 
