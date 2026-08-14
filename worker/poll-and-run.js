@@ -119,6 +119,41 @@ function buildBranchName(job) {
   return job.branchSlug ? `ai-agent/${job.branchSlug}-${job.id}` : `ai-agent/job-${job.id}`;
 }
 
+function extractExecutionCostUsd(output) {
+  if (!output) return null;
+
+  const patterns = [
+    /cost:\s*\$?([0-9]+(?:\.[0-9]+)?)/i,
+    /total cost:\s*\$?([0-9]+(?:\.[0-9]+)?)/i,
+    /\$\s*([0-9]+(?:\.[0-9]+)?)\s*(?:total)?\s*cost/i,
+    /tokens:\s*\d+\s*\([^)]*\).*?cost:\s*\$?([0-9]+(?:\.[0-9]+)?)/i,
+    /\bcost\b[^\$]*\$([0-9]+(?:\.[0-9]+)?)/i,
+  ];
+
+  for (const re of patterns) {
+    const match = output.match(re);
+    if (match) {
+      const cost = parseFloat(match[1]);
+      if (!Number.isNaN(cost)) return cost;
+    }
+  }
+
+  // Line-level fallback: find a line containing cost/pricing and a dollar amount.
+  const lines = output.split('\n');
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.includes('cost') || lower.includes('pricing')) {
+      const dollarMatch = line.match(/\$([0-9]+(?:\.[0-9]+)?)/);
+      if (dollarMatch) {
+        const cost = parseFloat(dollarMatch[1]);
+        if (!Number.isNaN(cost)) return cost;
+      }
+    }
+  }
+
+  return null;
+}
+
 function runAgentContainer(job, branchName, promptFilePath, envFilePath, sshKeyFilePath) {
   return new Promise((resolve, reject) => {
     const containerName = `ai-agent-job-${job.id}-${Date.now()}`;
@@ -141,6 +176,21 @@ function runAgentContainer(job, branchName, promptFilePath, envFilePath, sshKeyF
 
     const child = spawn('docker', args);
     let output = '';
+    let interval = null;
+
+    // Start near-live log updates while container is still running.
+    interval = setInterval(() => {
+      if (!output) return;
+      const current = output.slice(-50000);
+      if (current) {
+        prisma.job.update({
+          where: { id: job.id },
+          data: { logOutput: current },
+        }).catch((err) => {
+          log(`Job ${job.id}: gagal update logOutput periodik: ${err.message}`);
+        });
+      }
+    }, 5000);
 
     const timeout = setTimeout(() => {
       log(`Job ${job.id} timeout setelah ${AGENT_TIMEOUT_MS}ms, kill container`);
@@ -156,11 +206,13 @@ function runAgentContainer(job, branchName, promptFilePath, envFilePath, sshKeyF
 
     child.on('close', (code) => {
       clearTimeout(timeout);
+      if (interval) clearInterval(interval);
       resolve({ exitCode: code, output });
     });
 
     child.on('error', (err) => {
       clearTimeout(timeout);
+      if (interval) clearInterval(interval);
       reject(err);
     });
   });
@@ -364,9 +416,6 @@ async function processJob(job) {
   // GitHub nggak izinin satu public key yang sama jadi deploy key di 2 repo berbeda.
   const isSelfEdit = process.env.SELF_REPO_URL && job.targetRepo === process.env.SELF_REPO_URL;
   const rawKey = isSelfEdit ? process.env.GIT_SSH_KEY_SELF : process.env.GIT_SSH_KEY;
-  // Trailing newline WAJIB ada setelah "-----END..."-- tanpa itu OpenSSL gagal parse
-  // key-nya ("error in libcrypto"), dan closing quote di .env nempel langsung di baris
-  // END tanpa newline di antaranya.
   const sshKey = (rawKey || '').trimEnd() + '\n';
   fs.writeFileSync(sshKeyFilePath, sshKey, { mode: 0o600 });
   fs.writeFileSync(
@@ -386,6 +435,7 @@ async function processJob(job) {
 
   try {
     const { exitCode, output } = await runAgentContainer(job, branchName, promptFilePath, envFilePath, sshKeyFilePath);
+    const executionCostUsd = extractExecutionCostUsd(output);
 
     if (exitCode === 0) {
       await prisma.job.update({
@@ -393,7 +443,8 @@ async function processJob(job) {
         data: {
           status: 'DONE',
           branchName,
-          logOutput: output.slice(-50_000), // batasi biar nggak bengkak, ambil 50k karakter terakhir
+          logOutput: output.slice(-50_000),
+          executionCostUsd,
           completedAt: new Date(),
         },
       });
@@ -413,6 +464,7 @@ async function processJob(job) {
           status: 'FAILED',
           errorMessage: `Container exit code ${exitCode}`,
           logOutput: output.slice(-50_000),
+          executionCostUsd,
           completedAt: new Date(),
         },
       });

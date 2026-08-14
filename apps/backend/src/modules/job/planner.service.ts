@@ -20,11 +20,20 @@ Aturan wajib buat spec yang kamu tulis:
 
 Output HANYA spec-nya saja, tanpa basa-basi pembuka/penutup, dan jangan pernah output dalam format JSON/tool-call.`;
 
+const PLANNER_PRICING_PER_MILLION_TOKENS = {
+  'claude-sonnet-5': { input: 3, output: 15 },
+  'claude-3-5-sonnet': { input: 3, output: 15 },
+  'claude-3-opus': { input: 15, output: 75 },
+  'claude-3-haiku': { input: 0.25, output: 1.25 },
+  'claude-opus': { input: 15, output: 75 },
+  'claude-haiku': { input: 0.25, output: 1.25 },
+};
+
 @Injectable()
 export class PlannerService {
   private readonly logger = new Logger(PlannerService.name);
 
-  async generatePlan(idea: string, repoContext?: string): Promise<{ plan: string; branchSlug: string | null }> {
+  async generatePlan(idea: string, repoContext?: string): Promise<{ plan: string; branchSlug: string | null; plannerCostUsd: number | null }> {
     const baseUrl = process.env.PLANNER_API_BASE_URL || 'https://api.anthropic.com';
     const apiKey = process.env.PLANNER_API_KEY;
     const model = process.env.PLANNER_MODEL || 'claude-sonnet-5';
@@ -85,6 +94,20 @@ export class PlannerService {
       throw new Error('Planner mengembalikan response yang bukan spec teks valid, coba submit ulang');
     }
 
-    return { plan, branchSlug };
+    // Hitung biaya planner dari usage response (field usage.input_tokens/output_tokens)
+    let plannerCostUsd: number | null = null;
+    const usage = data.usage;
+    if (usage && typeof usage.input_tokens === 'number' && typeof usage.output_tokens === 'number') {
+      const pricing = PLANNER_PRICING_PER_MILLION_TOKENS[model as keyof typeof PLANNER_PRICING_PER_MILLION_TOKENS];
+      if (pricing) {
+        const inputCost = (usage.input_tokens / 1_000_000) * pricing.input;
+        const outputCost = (usage.output_tokens / 1_000_000) * pricing.output;
+        plannerCostUsd = inputCost + outputCost;
+      } else {
+        this.logger.warn(`Tidak ada harga planner untuk model "${model}", cost tidak dihitung`);
+      }
+    }
+
+    return { plan, branchSlug, plannerCostUsd };
   }
 }

@@ -50,13 +50,18 @@ export class JobService {
   private async generatePlanInBackground(jobId: number) {
     const job = await this.prisma.job.findUniqueOrThrow({ where: { id: jobId } });
     try {
-      const { plan, branchSlug } = await this.planner.generatePlan(job.idea);
+      const { plan, branchSlug, plannerCostUsd } = await this.planner.generatePlan(job.idea);
       // Mode AUTO: skip nunggu approve manual, langsung QUEUED begitu plan jadi.
       // Mode MANUAL (default): tetap PLANNED, nunggu user approve kayak biasa.
       const nextStatus = job.mode === JobMode.AUTO ? JobStatus.QUEUED : JobStatus.PLANNED;
       await this.prisma.job.update({
         where: { id: jobId },
-        data: { plan, branchSlug, status: nextStatus },
+        data: {
+          plan,
+          branchSlug,
+          plannerCostUsd,
+          status: nextStatus,
+        },
       });
     } catch (err) {
       await this.prisma.job.update({

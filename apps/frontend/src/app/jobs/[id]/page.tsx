@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import Link from 'next/link';
@@ -23,6 +23,8 @@ interface JobDetail {
   errorMessage: string | null;
   targetRepo: string;
   createdAt: string;
+  plannerCostUsd: number | null;
+  executionCostUsd: number | null;
 }
 
 type PendingAction = 'save-plan' | 'approve' | 'delete' | null;
@@ -38,6 +40,11 @@ const STATUS_STYLES: Record<JobDetail['status'], { label: string; className: str
   FAILED: { label: 'Gagal', className: 'bg-status-error/10 text-status-error border-status-error/20', icon: AlertTriangle },
 };
 
+function formatCost(value: number | null | undefined): string {
+  if (value == null) return '';
+  return `$${value.toFixed(4)}`;
+}
+
 export default function JobDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -46,17 +53,24 @@ export default function JobDetailPage() {
 
   const { data: job, mutate } = useSWR(`/jobs/${id}`, fetcher, {
     refreshInterval: (data) =>
-      data && ['RUNNING', 'QUEUED', 'DRAFTING_PLAN'].includes(data.status) ? 4000 : 0,
+      data && ['RUNNING', 'QUEUED', 'DRAFTING_PLAN'].includes(data.status) ? 2000 : 0,
   });
 
   const [planDraft, setPlanDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [error, setError] = useState('');
+  const logContainerRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
     if (job?.plan) setPlanDraft(job.plan);
   }, [job?.plan]);
+
+  useEffect(() => {
+    if (job?.logOutput && logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [job?.logOutput]);
 
   useEffect(() => {
     if (userLoading) return;
@@ -107,6 +121,7 @@ export default function JobDetailPage() {
 
   const status = STATUS_STYLES[job.status];
   const StatusIcon = status.icon;
+  const totalCost = (job.plannerCostUsd ?? 0) + (job.executionCostUsd ?? 0);
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
@@ -213,6 +228,21 @@ export default function JobDetailPage() {
           </div>
         )}
 
+        {(job.status === 'DONE' || job.status === 'FAILED') && (job.plannerCostUsd != null || job.executionCostUsd != null) && (
+          <div className="rounded-card border border-border bg-card p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Biaya
+            </h2>
+            {job.plannerCostUsd != null && (
+              <p className="mt-1 text-sm text-foreground">Planner: {formatCost(job.plannerCostUsd)}</p>
+            )}
+            {job.executionCostUsd != null && (
+              <p className="mt-1 text-sm text-foreground">Execution: {formatCost(job.executionCostUsd)}</p>
+            )}
+            <p className="mt-1 text-sm font-semibold text-accent">Total: {formatCost(totalCost)}</p>
+          </div>
+        )}
+
         {job.mode === 'AUTO' && job.reviewVerdict && (
           <div
             className={`rounded-card border p-4 ${
@@ -246,7 +276,10 @@ export default function JobDetailPage() {
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Log
             </h2>
-            <pre className="max-h-96 overflow-y-auto rounded-xl bg-black p-4 text-xs leading-relaxed text-muted-foreground">
+            <pre
+              ref={logContainerRef}
+              className="max-h-96 overflow-y-auto rounded-xl bg-black p-4 text-xs leading-relaxed text-muted-foreground"
+            >
               {job.logOutput}
             </pre>
           </div>

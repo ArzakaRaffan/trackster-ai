@@ -29,6 +29,8 @@ model Job {
   logOutput   String? // Full log dari Aider setelah selesai (batch, bukan streaming realtime)
   errorMessage String?
   targetRepo  String // URL git repo yang mau dikerjain (misal repo Trackster)
+  plannerCostUsd  Float? // Estimasi biaya planner (Claude) dalam USD
+  executionCostUsd Float? // Estimasi biaya eksekusi (Aider/DeepSeek) dalam USD
   createdAt   DateTime  @default(now())
   startedAt   DateTime?
   completedAt DateTime?
