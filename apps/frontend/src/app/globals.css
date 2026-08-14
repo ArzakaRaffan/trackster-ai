@@ -3,28 +3,51 @@
 @tailwind utilities;
 
 :root {
-  --background: #09090b;
-  --foreground: #fafafa;
+  --background: #121212;
+  --foreground: #ffffff;
 
-  --card: #131316;
-  --card-foreground: #fafafa;
+  --card: #181818;
+  --card-foreground: #ffffff;
 
-  --muted: #1d1d21;
-  --muted-foreground: #a1a1aa;
+  --muted: #252525;
+  --muted-foreground: #b3b3b3;
 
-  --border: #2a2a2e;
-  --input: #1f1f24;
+  --border: #252525;
+  --input: #1f1f1f;
 
-  --primary: #10b981;
-  --primary-foreground: #09090b;
+  --primary: #1ed760;
+  --primary-foreground: #121212;
 
-  --secondary: #1b1b1f;
-  --secondary-foreground: #fafafa;
+  --secondary: #1f1f1f;
+  --secondary-foreground: #ffffff;
 
-  --destructive: #ef4444;
-  --destructive-foreground: #fafafa;
+  --destructive: #f3727f;
+  --destructive-foreground: #ffffff;
 
-  --radius: 0.75rem;
+  --radius: 8px;
+
+  /* Trackster-specific tokens */
+  --interactive: #1f1f1f;
+  --hover: #252525;
+
+  --text-primary: #ffffff;
+  --text-secondary: #b3b3b3;
+  --text-disabled: #7c7c7c;
+
+  --accent: #1ed760;
+  --accent-foreground: #121212;
+  --accent-border: #1db954;
+  --accent-pressed: #1aa34a;
+
+  --status-success: #1ed760;
+  --status-warning: #ffa42b;
+  --status-error: #f3727f;
+  --status-info: #539df5;
+
+  /* Input inset ring (instead of border) */
+  --input-ring: rgb(124,124,124) 0 0 0 1px inset;
+  --input-ring-focus: var(--accent) 0 0 0 1px inset;
+  --input-ring-error: var(--status-error) 0 0 0 1px inset;
 }
 
 * {
@@ -38,7 +61,8 @@ html {
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -61,7 +85,7 @@ body {
   background-color: rgba(255, 255, 255, 0.24);
 }
 
-/* Reusable component class */
+/* Reusable component classes */
 @layer components {
   .glass-card {
     background: rgba(255, 255, 255, 0.04);
@@ -79,5 +103,57 @@ body {
   .focus-ring:focus-visible {
     outline-color: var(--primary);
     box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15);
+  }
+
+  /* Input field using inset ring per Trackster design token */
+  .field {
+    background-color: var(--input);
+    box-shadow: var(--input-ring);
+    transition: box-shadow 0.15s ease;
+  }
+
+  .field:focus,
+  .field:focus-visible {
+    outline: none;
+    box-shadow: var(--input-ring-focus);
+  }
+
+  .field[aria-invalid='true'],
+  .field.is-invalid {
+    box-shadow: var(--input-ring-error);
+  }
+}
+
+/* Shimmer loading skeleton */
+@layer utilities {
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
