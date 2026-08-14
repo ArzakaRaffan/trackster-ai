@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
@@ -181,6 +181,31 @@ export default function JobsDashboardPage() {
   const [showSecretPrompt, setShowSecretPrompt] = useState(false);
   const [formError, setFormError] = useState('');
 
+  const costSummary = useMemo(() => {
+    const list = jobs ?? [];
+    let totalPlanner = 0;
+    let totalExecution = 0;
+    let doneCount = 0;
+    let failedCount = 0;
+
+    for (const job of list) {
+      const planner = job.plannerCostUsd ?? 0;
+      const execution = job.executionCostUsd ?? 0;
+      totalPlanner += planner;
+      totalExecution += execution;
+      if (job.status === 'DONE') doneCount += 1;
+      if (job.status === 'FAILED') failedCount += 1;
+    }
+
+    return {
+      totalPlanner,
+      totalExecution,
+      total: totalPlanner + totalExecution,
+      doneCount,
+      failedCount,
+    };
+  }, [jobs]);
+
   useEffect(() => {
     if (userLoading) return;
     if (!user || user.username !== 'arzaka') {
@@ -247,6 +272,55 @@ export default function JobsDashboardPage() {
             Chat
           </Link>
         </header>
+
+        <section className="card-surface border border-border/60 bg-card/70 p-5" aria-label="Ringkasan biaya">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl border border-border bg-card/70 p-4">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Total Biaya
+              </p>
+              <p className="mt-2 text-2xl font-bold text-accent">
+                {formatCost(costSummary.total)}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-card/70 p-4">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Planner (Claude)
+              </p>
+              <p className="mt-2 text-xl font-semibold text-white">
+                {formatCost(costSummary.totalPlanner)}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-card/70 p-4">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Eksekusi (DeepSeek)
+              </p>
+              <p className="mt-2 text-xl font-semibold text-white">
+                {formatCost(costSummary.totalExecution)}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-card/70 p-4">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Status Job
+              </p>
+              <div className="mt-2 flex items-center gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-status-success">
+                    {costSummary.doneCount} Selesai
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-status-error">
+                    {costSummary.failedCount} Gagal
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <section className="grid gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
           <form onSubmit={handleSubmitClick} className="gradient-card card-surface p-6">
