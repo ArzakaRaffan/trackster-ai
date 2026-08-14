@@ -19,13 +19,23 @@ model Job {
   idea        String // Ide singkat dari user, mentah
   plan        String? // Technical spec detail hasil generate Claude, editable oleh user sebelum approve
   status      JobStatus @default(DRAFTING_PLAN)
-  branchName  String? // Nama branch git yang dibikin agent, diisi begitu mulai RUNNING
+  mode        JobMode   @default(MANUAL) // MANUAL: approve manual + review manual sebelum merge. AUTO: auto-approve, auto-merge kalau Claude review bilang aman
+  branchSlug  String? // Slug deskriptif dari Claude (misal "fix-chat-streaming"), dipakai buat nama branch git -- bukan cuma "job-<id>"
+  branchName  String? // Nama branch git final yang dibikin agent (ai-agent/<slug>-<id>), diisi begitu selesai
+  reviewVerdict   String? // Hasil review Claude sebelum auto-merge (mode AUTO doang): "SAFE" | "UNSAFE" | "SKIPPED_SENSITIVE_FILE" | null kalau mode MANUAL
+  reviewReasoning String? // Alasan dari Claude buat reviewVerdict di atas, ditampilkan ke user buat transparansi
+  merged      Boolean   @default(false) // true kalau branch ini udah ke-auto-merge ke main (mode AUTO aja, mode MANUAL selalu false karena merge manual dari GitHub)
   logOutput   String? // Full log dari Aider setelah selesai (batch, bukan streaming realtime)
   errorMessage String?
   targetRepo  String // URL git repo yang mau dikerjain (misal repo Trackster)
   createdAt   DateTime  @default(now())
   startedAt   DateTime?
   completedAt DateTime?
+}
+
+enum JobMode {
+  MANUAL // User approve plan manual, review + merge branch manual (default, paling aman)
+  AUTO // Auto-approve plan begitu jadi, auto-merge ke main kalau Claude review bilang aman DAN diff nggak nyentuh file sensitif
 }
 
 enum JobStatus {
