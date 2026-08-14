@@ -26,7 +26,6 @@
 
   --radius: 8px;
 
-  /* Trackster-specific tokens */
   --interactive: #1f1f1f;
   --hover: #252525;
 
@@ -44,7 +43,6 @@
   --status-error: #f3727f;
   --status-info: #539df5;
 
-  /* Input inset ring (instead of border) */
   --input-ring: rgb(124,124,124) 0 0 0 1px inset;
   --input-ring-focus: var(--accent) 0 0 0 1px inset;
   --input-ring-error: var(--status-error) 0 0 0 1px inset;
@@ -67,7 +65,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -85,7 +82,6 @@ body {
   background-color: rgba(255, 255, 255, 0.24);
 }
 
-/* Reusable component classes */
 @layer components {
   .glass-card {
     background: rgba(255, 255, 255, 0.04);
@@ -105,7 +101,6 @@ body {
     box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15);
   }
 
-  /* Input field using inset ring per Trackster design token */
   .field {
     background-color: var(--input);
     box-shadow: var(--input-ring);
@@ -134,7 +129,10 @@ body {
     line-height: 1.2;
     min-height: 44px;
     padding: 0 1rem;
-    transition: background-color 200ms cubic-bezier(.3,0,.4,1), color 200ms cubic-bezier(.3,0,.4,1), transform 120ms cubic-bezier(.3,0,.4,1);
+    transition:
+      background-color 200ms cubic-bezier(0.3, 0, 0.4, 1),
+      color 200ms cubic-bezier(0.3, 0, 0.4, 1),
+      transform 120ms cubic-bezier(0.3, 0, 0.4, 1);
     user-select: none;
     cursor: pointer;
     border: 1px solid transparent;
@@ -186,6 +184,45 @@ body {
     line-height: 1.2;
     border: 1px solid transparent;
   }
+
+  .gradient-card {
+    background:
+      linear-gradient(145deg, rgba(30, 215, 96, 0.06), rgba(255, 255, 255, 0.02) 38%),
+      var(--card);
+    border: 1px solid rgba(30, 215, 96, 0.22);
+    box-shadow:
+      0 20px 40px -24px rgba(0, 0, 0, 0.8),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .typing-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background-color: var(--muted-foreground);
+    animation: typingBlink 1.4s infinite ease-in-out;
+  }
+
+  .typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+}
+
+@keyframes typingBlink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
 }
 
 /* Shimmer loading skeleton */
@@ -219,5 +256,9 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .typing-dot {
+    animation: none !important;
   }
 }

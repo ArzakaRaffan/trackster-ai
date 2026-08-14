@@ -226,29 +226,12 @@ export default function ChatPage() {
     !hasStarted;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      <style>{`
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(8px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .chat-bubble-enter {
-          animation: fadeInUp 0.32s cubic-bezier(.16,1,.3,1);
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .chat-bubble-enter {
-            animation: none;
-          }
-        }
-      `}</style>
+    <div className="relative flex h-screen flex-col overflow-hidden bg-background text-foreground">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(30,215,96,0.14),transparent_38%)]" />
+      <div className="pointer-events-none absolute right-[-8%] top-[-10%] h-72 w-72 rounded-full bg-primary/15 blur-3xl" />
+      <div className="pointer-events-none absolute left-[-5%] bottom-[-5%] h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
 
-      <header className="flex items-center justify-between gap-2 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-md">
+      <header className="relative z-10 flex items-center justify-between gap-2 border-b border-white/5 bg-black/20 px-4 py-3 backdrop-blur-xl">
         <Link
           href="/"
           className="focus-ring inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm text-muted-foreground transition hover:text-foreground"
@@ -257,14 +240,18 @@ export default function ChatPage() {
           <span className="hidden sm:inline">Kembali</span>
         </Link>
 
-        <h1 className="flex-1 text-center text-sm font-semibold text-foreground">Chat</h1>
+        <h1 className="flex-1 text-center text-sm font-semibold tracking-tight text-foreground">
+          Chat
+        </h1>
 
         <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-muted-foreground sm:inline">Model</span>
+          <span className="hidden text-xs font-medium text-muted-foreground sm:inline">
+            Model
+          </span>
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className="field focus-ring rounded-xl px-3 py-1.5 text-xs text-muted-foreground"
+            className="field focus-ring rounded-xl px-3 py-1.5 text-xs font-medium text-muted-foreground"
             aria-label="Pilih model AI"
           >
             {MODELS.map((m) => (
@@ -276,52 +263,76 @@ export default function ChatPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-3 py-4 sm:px-4" role="log" aria-live="polite">
+      <main
+        className="relative z-10 flex-1 overflow-y-auto px-3 py-5 sm:px-6"
+        role="log"
+        aria-live="polite"
+      >
         {messages.length === 0 && (
-          <div className="mt-10 flex flex-col items-center gap-2 text-center">
-            <Sparkles className="h-8 w-8 text-text-disabled" />
-            <p className="text-sm text-muted-foreground">Mulai ngobrol...</p>
+          <div className="mt-16 flex flex-col items-center gap-4 text-center">
+            <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <Sparkles className="h-8 w-8 text-accent" />
+              <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-accent shadow-sm shadow-black/30" />
+            </div>
+            <div>
+              <p className="text-base font-bold text-white">Mulai ngobrol</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Ketik ide atau pertanyaan apa aja.
+              </p>
+            </div>
           </div>
         )}
 
         {messages.map((msg, i) => {
           const isUser = msg.role === 'user';
+          const isStreamingPlaceholder =
+            !isUser && i === messages.length - 1 && showStatus;
+
           return (
             <div
               key={i}
-              className={`chat-bubble-enter mb-4 flex items-end gap-2 ${
+              className={`chat-bubble-enter mb-5 flex items-start gap-2 ${
                 isUser ? 'justify-end' : 'justify-start'
               }`}
             >
               {!isUser && (
-                <div className="mb-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-accent">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-[11px] font-black text-accent">
                   AI
                 </div>
               )}
+
               <div
                 className={`flex max-w-[85%] flex-col sm:max-w-[75%] ${
                   isUser ? 'items-end' : 'items-start'
                 }`}
               >
                 <div
-                  className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
+                  className={`relative ${
                     isUser
-                      ? 'rounded-br-md bg-secondary text-secondary-foreground'
-                      : 'rounded-bl-md border border-border bg-card text-foreground'
-                  }`}
+                      ? 'rounded-2xl rounded-br-md bg-accent px-4 py-3 text-accent-foreground shadow-lg shadow-black/20'
+                      : 'rounded-2xl rounded-bl-md border border-white/10 bg-[#1e1e1e]/90 px-4 py-3 text-foreground shadow-xl shadow-black/20'
+                  } ${isStreamingPlaceholder ? 'min-w-[160px]' : ''}`}
                 >
-                  {showStatus && i === messages.length - 1 ? (
-                    <span className="italic text-muted-foreground">
-                      {STATUS_TEXTS[statusIndex]}
-                    </span>
+                  {isStreamingPlaceholder ? (
+                    <div className="flex h-5 items-center gap-1.5">
+                      <span className="typing-dot" />
+                      <span className="typing-dot" />
+                      <span className="typing-dot" />
+                    </div>
                   ) : (
-                    msg.content
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                      {msg.content}
+                    </p>
                   )}
                 </div>
 
-                {msg.content && (
-                  <div className={`mt-1 flex items-center gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                    <span className="text-[10px] text-muted-foreground tabular-nums">
+                {msg.content && !isStreamingPlaceholder && (
+                  <div
+                    className={`mt-1.5 flex items-center gap-2 ${
+                      isUser ? 'justify-end' : 'justify-start'
+                    }`}
+                  >
+                    <span className="text-[10px] tabular-nums text-muted-foreground">
                       {msg.timestamp}
                     </span>
                     <button
@@ -346,14 +357,14 @@ export default function ChatPage() {
         })}
 
         {error && (
-          <p className="text-xs text-status-error" role="alert">
+          <p className="text-xs font-medium text-status-error" role="alert">
             {error}
           </p>
         )}
         <div ref={scrollRef} />
       </main>
 
-      <footer className="border-t border-border bg-background/80 px-3 py-3 backdrop-blur-md sm:px-4 pb-[env(safe-area-inset-bottom)]">
+      <footer className="relative z-10 border-t border-white/5 bg-black/20 px-3 py-3 backdrop-blur-xl sm:px-6 pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-end gap-2">
           <textarea
             className="field focus-ring max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl px-4 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-text-disabled focus:outline-none disabled:opacity-60"
