@@ -30,6 +30,8 @@ interface Job {
   branchName: string | null;
   merged: boolean;
   createdAt: string;
+  plannerCostUsd: number | null;
+  executionCostUsd: number | null;
 }
 
 const STATUS_CONFIG: Record<
@@ -70,6 +72,17 @@ const STATUS_CONFIG: Record<
 
 const fetcher = (path: string) => api.get<Job[]>(path);
 
+function formatCost(value: number | null | undefined): string {
+  if (value == null) return '';
+  return `$${value.toFixed(4)}`;
+}
+
+function getJobCostText(job: Job): string | null {
+  if (job.plannerCostUsd == null && job.executionCostUsd == null) return null;
+  const total = (job.plannerCostUsd ?? 0) + (job.executionCostUsd ?? 0);
+  return formatCost(total);
+}
+
 function JobSkeleton() {
   return (
     <div className="card-surface p-5">
@@ -82,6 +95,8 @@ function JobSkeleton() {
 function ActiveJobCard({ job }: { job: Job }) {
   const status = STATUS_CONFIG[job.status];
   const StatusIcon = status.icon;
+  const costText = job.status === 'DONE' || job.status === 'FAILED' ? getJobCostText(job) : null;
+
   return (
     <Link
       href={`/jobs/${job.id}`}
@@ -102,6 +117,9 @@ function ActiveJobCard({ job }: { job: Job }) {
           <span className="text-muted-foreground">
             Dibuat {new Date(job.createdAt).toLocaleDateString('id-ID')}
           </span>
+          {costText && (
+            <span className="font-semibold text-accent">{costText}</span>
+          )}
           <span className="inline-flex items-center gap-1 font-semibold text-accent opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             Lihat detail
             <ArrowUpRight className="h-3.5 w-3.5" />
@@ -115,6 +133,8 @@ function ActiveJobCard({ job }: { job: Job }) {
 function HistoryJobRow({ job }: { job: Job }) {
   const status = STATUS_CONFIG[job.status];
   const StatusIcon = status.icon;
+  const costText = getJobCostText(job);
+
   return (
     <Link
       href={`/jobs/${job.id}`}
@@ -133,6 +153,9 @@ function HistoryJobRow({ job }: { job: Job }) {
       <p className="min-w-0 flex-1 truncate text-sm font-medium text-white">
         {job.idea}
       </p>
+      {costText && (
+        <span className="shrink-0 text-xs font-semibold text-accent">{costText}</span>
+      )}
       <time className="shrink-0 text-xs tabular-nums text-muted-foreground">
         {new Date(job.createdAt).toLocaleDateString('id-ID')}
       </time>
