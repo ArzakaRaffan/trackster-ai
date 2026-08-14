@@ -43,6 +43,36 @@ export const api = {
       method: 'DELETE',
       headers: agentSecret ? { 'x-agent-secret': agentSecret } : undefined,
     }),
+  // Chat session endpoints
+  getSessions: () =>
+    request<ChatSession[]>('/chat-sessions'),
+  getSession: (id: number) =>
+    request<ChatSessionDetail>(`/chat-sessions/${id}`),
+  createSession: (title?: string) =>
+    request<ChatSession>('/chat-sessions', {
+      method: 'POST',
+      body: title ? JSON.stringify({ title }) : undefined,
+    }),
+  deleteSession: (id: number) =>
+    request<{ success: boolean }>(`/chat-sessions/${id}`, { method: 'DELETE' }),
 };
 
 export { API_URL, ApiError };
+
+export interface ChatSession {
+  id: number;
+  title: string | null;
+  lastMessageAt: string | null;
+  createdAt: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatSessionDetail extends ChatSession {
+  messages: ChatMessage[];
+}

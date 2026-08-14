@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import type { KeyboardEvent } from 'react';
 import Link from 'next/link';
 import {
@@ -10,15 +10,23 @@ import {
   Check,
   Copy,
   Loader2,
+  Plus,
   RotateCcw,
   Send,
   Sparkles,
+  Trash2,
+  X,
 } from 'lucide-react';
+import { api, ChatSession, ChatMessage } from '@/lib/api';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+}
+
+interface Session extends ChatSession {
+  title: string;
 }
 
 const STATUS_TEXTS = [
@@ -48,8 +56,92 @@ const MODELS = [
 const DEFAULT_MODEL = MODELS[0].value;
 const MODEL_STORAGE_KEY = 'ai-trackster-selected-model';
 
-const formatTime = () =>
-  new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const formatTime = (date?: string | Date) => {
+  if (date) {
+    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const formatRelative = (iso: string | null) => {
+  if (!iso) return 'Belum ada pesan';
+  const deltaMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(deltaMs / 60000);
+  if (minutes < 1) return 'Baru saja';
+  if (minutes < 60) return `${minutes} menit lalu`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} jam lalu`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} hari lalu`;
+  return new Date(iso).toLocaleDateString('id-ID');
+};
+
+function MessageBubble({
+  msg,
+  isUser,
+  isStreamingPlaceholder,
+  statusText,
+  copiedIndex,
+  index,
+  onCopy,
+}: {
+  msg: Message;
+  isUser: boolean;
+  isStreamingPlaceholder: boolean;
+  statusText: string;
+  copiedIndex: number | null;
+  index: number;
+  onCopy: (text: string, index: number) => void;
+}) {
+  return (
+    <div className={`chat-bubble-enter mb-5 flex items-start gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+      {!isUser && (
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-[11px] font-black text-accent">
+          AI
+        </div>
+      )}
+
+      <div className={`flex max-w-[85%] flex-col sm:max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}>
+        <div
+          className={`relative ${
+            isUser
+              ? 'rounded-2xl rounded-br-md bg-accent px-4 py-3 text-accent-foreground shadow-lg shadow-black/20'
+              : 'rounded-2xl rounded-bl-md border border-white/10 bg-[#1e1e1e]/90 px-4 py-3 text-foreground shadow-xl shadow-black/20'
+          } ${isStreamingPlaceholder ? 'min-w-[160px]' : ''}`}
+        >
+          {isStreamingPlaceholder ? (
+            <div className="flex items-center gap-2">
+              <div className="flex h-5 items-center gap-1.5">
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+              </div>
+              <span className="text-xs text-muted-foreground">{statusText}</span>
+            </div>
+          ) : (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+          )}
+        </div>
+
+        {msg.content && !isStreamingPlaceholder && (
+          <div className={`mt-1.5 flex items-center gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+            <span className="text-[10px] tabular-nums text-muted-foreground">{msg.timestamp}</span>
+            <button
+              type="button"
+              onClick={() => onCopy(msg.content, index)}
+              className="focus-ring inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              aria-label="Salin pesan"
+              title="Salin pesan"
+            >
+              {copiedIndex === index ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {copiedIndex === index ? 'Tersalin' : 'Salin'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function ChatHomePage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -62,97 +154,153 @@ export default function ChatHomePage() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [lastFailedInput, setLastFailedInput] = useState('');
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [fetchingMessages, setFetchingMessages] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const statusTimer = useRef<any>(null);
 
-  const autoResize = () => {
+  const autoResize = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  };
-
-  // Load persisted model selection once on mount (client‑side only)
-  useEffect(() => {
-    const stored = localStorage.getItem(MODEL_STORAGE_KEY);
-    if (stored && stored !== model && MODELS.some((m) => m.value === stored)) {
-      setModel(stored);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist model selection whenever it changes
-  useEffect(() => {
-    localStorage.setItem(MODEL_STORAGE_KEY, model);
-  }, [model]);
-
-  // Auto-scroll when new messages are added and user is near bottom
-  useEffect(() => {
-    const el = messagesContainerRef.current;
-    if (!el) return;
-    const threshold = 80;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distanceFromBottom < threshold) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [messages]);
-
-  useEffect(() => {
-    const el = messagesContainerRef.current;
-    if (!el) return;
-
-    const handleScroll = () => {
-      const threshold = 80;
-      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-      setShowScrollButton(!nearBottom);
-    };
-
-    el.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll();
-
-    return () => el.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  useEffect(() => {
-    autoResize();
-  }, [input, loading]);
-
-  useEffect(() => {
-    return () => {
-      if (statusTimer.current) {
-        clearInterval(statusTimer.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (hasStarted && statusTimer.current) {
-      clearInterval(statusTimer.current);
-      statusTimer.current = null;
-    }
-  }, [hasStarted]);
-
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     setShowScrollButton(false);
+  }, []);
+
+  const loadSessions = useCallback(async () => {
+    try {
+      setSessionsLoading(true);
+      const data = await api.getSessions();
+      const normalized = data.map((s) => ({
+        ...s,
+        title: s.title || 'New Chat',
+      }));
+      setSessions(normalized);
+      if (normalized.length > 0 && !activeSessionId) {
+        setActiveSessionId(normalized[0].id);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Gagal memuat daftar chat');
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
+
+  useEffect(() => {
+    if (activeSessionId === null) {
+      setMessages([]);
+      return;
+    }
+
+    let cancelled = false;
+    setFetchingMessages(true);
+    api.getSession(activeSessionId)
+      .then((detail) => {
+        if (cancelled) return;
+        const msgs = detail.messages.map((m: ChatMessage) => ({
+          role: m.role,
+          content: m.content,
+          timestamp: formatTime(m.createdAt),
+        }));
+        setMessages(msgs);
+        requestAnimationFrame(() => {
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+          }
+        });
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message || 'Gagal memuat pesan');
+      })
+      .finally(() => {
+        if (!cancelled) setFetchingMessages(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSessionId]);
+
+  const handleNewChat = async () => {
+    try {
+      const newSession = await api.createSession();
+      const normalized: Session = { ...newSession, title: newSession.title || 'New Chat' };
+      setSessions((prev) => [normalized, ...prev.filter((s) => s.id !== normalized.id)]);
+      setActiveSessionId(normalized.id);
+      setMessages([]);
+      setError('');
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    } catch (err: any) {
+      setError(err.message || 'Gagal membuat chat baru');
+    }
   };
 
-  const handleCopy = async (text: string, index: number) => {
+  const handleSelectSession = (id: number) => {
+    if (id === activeSessionId) return;
+    setActiveSessionId(id);
+    setError('');
+  };
+
+  const handleDeleteClick = (id: number) => {
+    setPendingDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (pendingDeleteId === null) return;
+
     try {
-      await navigator.clipboard.writeText(text);
-      setCopiedIndex(index);
-      setTimeout(() => setCopiedIndex(null), 2000);
-    } catch {
-      setError('Gagal menyalin teks');
+      await api.deleteSession(pendingDeleteId);
+      setSessions((prev) => prev.filter((s) => s.id !== pendingDeleteId));
+
+      if (activeSessionId === pendingDeleteId) {
+        const remaining = sessions.filter((s) => s.id !== pendingDeleteId);
+        if (remaining.length > 0) {
+          setActiveSessionId(remaining[0].id);
+        } else {
+          setActiveSessionId(null);
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Gagal menghapus chat');
+    } finally {
+      setPendingDeleteId(null);
     }
   };
 
   const sendMessage = async (content: string) => {
     if (!content.trim() || loading) return;
+
+    // Ensure we have a session to attach the message to
+    let sessionId = activeSessionId;
+    if (sessionId === null) {
+      try {
+        const newSession = await api.createSession();
+        setSessions((prev) => [
+          { ...newSession, title: newSession.title || 'New Chat' },
+          ...prev.filter((s) => s.id !== newSession.id),
+        ]);
+        setActiveSessionId(newSession.id);
+        sessionId = newSession.id;
+      } catch (err: any) {
+        setError(err.message || 'Gagal membuat sesi chat');
+        return;
+      }
+    }
 
     const timestamp = formatTime();
     const userMessage: Message = { role: 'user', content: content.trim(), timestamp };
@@ -187,7 +335,7 @@ export default function ChatHomePage() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         signal: controller.signal,
-        body: JSON.stringify({ messages: apiMessages, model }),
+        body: JSON.stringify({ messages: apiMessages, model, sessionId }),
       });
 
       if (!response.ok || !response.body) {
@@ -269,9 +417,11 @@ export default function ChatHomePage() {
       if (streamError) {
         throw new Error(streamError);
       }
+
+      // Update sessions list after successful send
+      await loadSessions();
     } catch (err: any) {
       setError(err?.message || 'Gagal kirim pesan');
-      // Remove the empty assistant placeholder if it still exists
       setMessages((prev) => {
         const updated = [...prev];
         if (
@@ -316,6 +466,16 @@ export default function ChatHomePage() {
     }
   };
 
+  const handleCopy = async (text: string, index: number) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    } catch {
+      setError('Gagal menyalin teks');
+    }
+  };
+
   const lastAssistantMsg = messages[messages.length - 1];
   const showStatus =
     loading &&
@@ -324,209 +484,253 @@ export default function ChatHomePage() {
     !hasStarted;
 
   return (
-    <div className="relative flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(30,215,96,0.14),transparent_38%)]" />
-      <div className="pointer-events-none absolute right-[-8%] top-[-10%] h-72 w-72 rounded-full bg-primary/15 blur-3xl" />
-      <div className="pointer-events-none absolute left-[-5%] bottom-[-5%] h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
-
-      <header className="relative z-10 flex items-center justify-between gap-2 border-b border-white/5 bg-black/20 px-4 py-3 backdrop-blur-xl">
-        <Link
-          href="/jobs"
-          className="focus-ring inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm text-muted-foreground transition hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span className="hidden sm:inline">Jobs</span>
-        </Link>
-
-        <h1 className="flex-1 text-center text-sm font-semibold tracking-tight text-foreground">
-          Chat
-        </h1>
-
-        <div className="flex items-center gap-2">
-          <label htmlFor="model-select" className="hidden text-xs font-medium text-muted-foreground sm:inline">
-            Model
-          </label>
-          <select
-            id="model-select"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="field focus-ring rounded-xl px-3 py-1.5 text-xs font-medium text-muted-foreground"
-            aria-label="Pilih model AI"
+    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+      {/* Sidebar */}
+      <aside className="w-72 shrink-0 border-r border-white/5 bg-black/20 flex flex-col">
+        <div className="p-4 border-b border-white/5">
+          <button
+            type="button"
+            onClick={handleNewChat}
+            className="btn btn-primary w-full"
           >
-            {MODELS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+            <Plus className="h-4 w-4" />
+            New Chat
+          </button>
         </div>
-      </header>
 
-      <main
-        ref={messagesContainerRef}
-        className="relative z-10 flex-1 min-h-0 overflow-y-auto px-3 py-5 sm:px-6"
-        role="log"
-        aria-live="polite"
-      >
-        {messages.length === 0 && (
-          <div className="mt-16 flex flex-col items-center gap-4 text-center">
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-              <Sparkles className="h-8 w-8 text-accent" />
-              <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-accent shadow-sm shadow-black/30" />
+        <div className="flex-1 min-h-0 overflow-y-auto py-2">
+          {sessionsLoading && (
+            <div className="px-4 py-3 text-sm text-muted-foreground">Memuat...</div>
+          )}
+
+          {!sessionsLoading && sessions.length === 0 && (
+            <div className="px-4 py-3 text-sm text-muted-foreground">
+              Belum ada chat
             </div>
-            <div>
-              <p className="text-base font-bold text-white">Mulai ngobrol</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Ketik ide atau pertanyaan apa aja.
-              </p>
-            </div>
-          </div>
-        )}
+          )}
 
-        {messages.map((msg, i) => {
-          const isUser = msg.role === 'user';
-          const isStreamingPlaceholder =
-            !isUser && i === messages.length - 1 && showStatus;
-
-          return (
-            <div
-              key={i}
-              className={`chat-bubble-enter mb-5 flex items-start gap-2 ${
-                isUser ? 'justify-end' : 'justify-start'
-              }`}
-            >
-              {!isUser && (
-                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-[11px] font-black text-accent">
-                  AI
-                </div>
-              )}
-
+          {!sessionsLoading &&
+            sessions.map((session) => (
               <div
-                className={`flex max-w-[85%] flex-col sm:max-w-[75%] ${
-                  isUser ? 'items-end' : 'items-start'
+                key={session.id}
+                className={`group flex items-center gap-1 px-2 py-2 ${
+                  activeSessionId === session.id
+                    ? 'bg-white/10'
+                    : 'hover:bg-white/5'
                 }`}
               >
-                <div
-                  className={`relative ${
-                    isUser
-                      ? 'rounded-2xl rounded-br-md bg-accent px-4 py-3 text-accent-foreground shadow-lg shadow-black/20'
-                      : 'rounded-2xl rounded-bl-md border border-white/10 bg-[#1e1e1e]/90 px-4 py-3 text-foreground shadow-xl shadow-black/20'
-                  } ${isStreamingPlaceholder ? 'min-w-[160px]' : ''}`}
+                <button
+                  type="button"
+                  onClick={() => handleSelectSession(session.id)}
+                  className="flex-1 min-w-0 text-left px-2 py-1 rounded-md"
                 >
-                  {isStreamingPlaceholder ? (
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-5 items-center gap-1.5">
-                        <span className="typing-dot" />
-                        <span className="typing-dot" />
-                        <span className="typing-dot" />
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {STATUS_TEXTS[statusIndex]}
-                      </span>
-                    </div>
-                  ) : (
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                      {msg.content}
-                    </p>
-                  )}
-                </div>
-
-                {msg.content && !isStreamingPlaceholder && (
-                  <div
-                    className={`mt-1.5 flex items-center gap-2 ${
-                      isUser ? 'justify-end' : 'justify-start'
-                    }`}
-                  >
-                    <span className="text-[10px] tabular-nums text-muted-foreground">
-                      {msg.timestamp}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(msg.content, i)}
-                      className="focus-ring inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                      aria-label="Salin pesan"
-                      title="Salin pesan"
-                    >
-                      {copiedIndex === i ? (
-                        <Check className="h-3 w-3" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                      {copiedIndex === i ? 'Tersalin' : 'Salin'}
-                    </button>
+                  <div className="truncate text-sm font-medium text-white">
+                    {session.title}
                   </div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatRelative(session.lastMessageAt)}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteClick(session.id)}
+                  className="p-1 rounded text-muted-foreground hover:text-status-error opacity-0 group-hover:opacity-100 focus:opacity-100"
+                  aria-label="Hapus chat"
+                  title="Hapus chat"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+        </div>
+      </aside>
+
+      {/* Main chat area */}
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(30,215,96,0.14),transparent_38%)]" />
+        <div className="pointer-events-none absolute right-[-8%] top-[-10%] h-72 w-72 rounded-full bg-primary/15 blur-3xl" />
+        <div className="pointer-events-none absolute left-[-5%] bottom-[-5%] h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+
+        <header className="relative z-10 flex items-center justify-between gap-2 border-b border-white/5 bg-black/20 px-4 py-3 backdrop-blur-xl">
+          <Link
+            href="/jobs"
+            className="focus-ring inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm text-muted-foreground transition hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">Jobs</span>
+          </Link>
+
+          <h1 className="flex-1 text-center text-sm font-semibold tracking-tight text-foreground">
+            Chat
+          </h1>
+
+          <div className="flex items-center gap-2">
+            <label htmlFor="model-select" className="hidden text-xs font-medium text-muted-foreground sm:inline">
+              Model
+            </label>
+            <select
+              id="model-select"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="field focus-ring rounded-xl px-3 py-1.5 text-xs font-medium text-muted-foreground"
+              aria-label="Pilih model AI"
+            >
+              {MODELS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </header>
+
+        <main
+          ref={messagesContainerRef}
+          className="relative z-10 flex-1 min-h-0 overflow-y-auto px-3 py-5 sm:px-6"
+          role="log"
+          aria-live="polite"
+        >
+          {fetchingMessages && (
+            <div className="mb-4 rounded-xl border border-border bg-card/50 p-4 text-sm text-muted-foreground">
+              Memuat pesan...
+            </div>
+          )}
+
+          {!fetchingMessages && messages.length === 0 && (
+            <div className="mt-16 flex flex-col items-center gap-4 text-center">
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                <Sparkles className="h-8 w-8 text-accent" />
+                <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-accent shadow-sm shadow-black/30" />
+              </div>
+              <div>
+                <p className="text-base font-bold text-white">Mulai ngobrol</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Ketik ide atau pertanyaan apa aja.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!fetchingMessages &&
+            messages.map((msg, i) => {
+              const isUser = msg.role === 'user';
+              const isStreamingPlaceholder =
+                !isUser && i === messages.length - 1 && showStatus;
+
+              return (
+                <MessageBubble
+                  key={i}
+                  msg={msg}
+                  isUser={isUser}
+                  isStreamingPlaceholder={isStreamingPlaceholder}
+                  statusText={STATUS_TEXTS[statusIndex]}
+                  copiedIndex={copiedIndex}
+                  index={i}
+                  onCopy={handleCopy}
+                />
+              );
+            })}
+
+          {error && (
+            <div className="mb-4 flex items-start gap-2 rounded-xl border border-status-error/20 bg-status-error/5 px-4 py-3" role="alert">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-error" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-status-error">{error}</p>
+                {lastFailedInput && (
+                  <button
+                    type="button"
+                    onClick={handleRetry}
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-status-error hover:text-status-error/80"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Coba lagi
+                  </button>
                 )}
               </div>
             </div>
-          );
-        })}
+          )}
 
-        {error && (
-          <div
-            className="mb-4 flex items-start gap-2 rounded-xl border border-status-error/20 bg-status-error/5 px-4 py-3"
-            role="alert"
-          >
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-error" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-status-error">{error}</p>
-              {lastFailedInput && (
+          {showScrollButton && (
+            <button
+              type="button"
+              onClick={scrollToBottom}
+              className="absolute bottom-24 right-4 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/80 text-muted-foreground shadow-lg shadow-black/40 transition hover:bg-black hover:text-foreground focus-ring"
+              aria-label="Scroll ke bawah"
+              title="Scroll ke bawah"
+            >
+              <ArrowDown className="h-4 w-4" />
+            </button>
+          )}
+        </main>
+
+        <footer className="relative z-10 border-t border-white/5 bg-black/20 px-3 py-3 backdrop-blur-xl sm:px-6 pb-[env(safe-area-inset-bottom)]">
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={textareaRef}
+              className="field focus-ring max-h-40 min-h-[44px] flex-1 resize-none rounded-2xl px-4 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-text-disabled focus:outline-none disabled:opacity-60"
+              rows={1}
+              placeholder="Tulis pesan..."
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                autoResize();
+              }}
+              onKeyDown={handleKeyDown}
+              disabled={loading || fetchingMessages}
+              aria-label="Tulis pesan"
+            />
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={loading || !input.trim() || fetchingMessages}
+              className="btn btn-primary h-11 w-11 shrink-0 rounded-full p-0 focus-ring"
+              aria-label="Kirim pesan"
+            >
+              {loading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+            </button>
+          </div>
+        </footer>
+
+        {/* Delete confirmation modal */}
+        {pendingDeleteId !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm">
+            <div className="shadow-dialog w-full max-w-sm rounded-2xl border border-white/10 bg-[#1b1b1b] p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-danger/10">
+                  <AlertTriangle className="h-6 w-6 text-status-error" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold text-white">Hapus chat ini?</h2>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    Tindakan ini tidak bisa dibatalkan dari sini.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex gap-3">
                 <button
                   type="button"
-                  onClick={handleRetry}
-                  className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-status-error hover:text-status-error/80"
+                  onClick={() => setPendingDeleteId(null)}
+                  className="btn btn-ghost flex-1"
                 >
-                  <RotateCcw className="h-3 w-3" />
-                  Coba lagi
+                  Batal
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={confirmDelete}
+                  className="btn btn-primary flex-1"
+                >
+                  Hapus
+                </button>
+              </div>
             </div>
           </div>
         )}
-
-        {showScrollButton && (
-          <button
-            type="button"
-            onClick={scrollToBottom}
-            className="absolute bottom-24 right-4 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/80 text-muted-foreground shadow-lg shadow-black/40 transition hover:bg-black hover:text-foreground focus-ring"
-            aria-label="Scroll ke bawah"
-            title="Scroll ke bawah"
-          >
-            <ArrowDown className="h-4 w-4" />
-          </button>
-        )}
-      </main>
-
-      <footer className="relative z-10 border-t border-white/5 bg-black/20 px-3 py-3 backdrop-blur-xl sm:px-6 pb-[env(safe-area-inset-bottom)]">
-        <div className="flex items-end gap-2">
-          <textarea
-            ref={textareaRef}
-            className="field focus-ring max-h-40 min-h-[44px] flex-1 resize-none rounded-2xl px-4 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-text-disabled focus:outline-none disabled:opacity-60"
-            rows={1}
-            placeholder="Tulis pesan..."
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              autoResize();
-            }}
-            onKeyDown={handleKeyDown}
-            disabled={loading}
-            aria-label="Tulis pesan"
-          />
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-            className="btn btn-primary h-11 w-11 shrink-0 rounded-full p-0 focus-ring"
-            aria-label="Kirim pesan"
-          >
-            {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Send className="h-5 w-5" />
-            )}
-          </button>
-        </div>
-      </footer>
+      </div>
     </div>
   );
 }
