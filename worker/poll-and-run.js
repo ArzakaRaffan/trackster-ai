@@ -103,7 +103,11 @@ async function processJob(job) {
   fs.writeFileSync(promptFilePath, job.plan || job.idea);
   // SSH private key ditulis ke file terpisah (BUKAN env var) karena --env-file Docker
   // tidak mendukung value multi-baris dengan baik.
-  fs.writeFileSync(sshKeyFilePath, process.env.GIT_SSH_KEY || '', { mode: 0o600 });
+  // Trailing newline WAJIB ada setelah "-----END..."-- tanpa itu OpenSSL gagal parse
+  // key-nya ("error in libcrypto"), dan closing quote di .env nempel langsung di baris
+  // END tanpa newline di antaranya.
+  const sshKey = (process.env.GIT_SSH_KEY || '').trimEnd() + '\n';
+  fs.writeFileSync(sshKeyFilePath, sshKey, { mode: 0o600 });
   fs.writeFileSync(
     envFilePath,
     [
