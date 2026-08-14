@@ -80,12 +80,12 @@ function ActiveJobCard({ job }: { job: Job }) {
   return (
     <Link
       href={`/jobs/${job.id}`}
-      className="group relative block overflow-hidden rounded-2xl border border-primary/20 bg-card p-6 shadow-2xl shadow-black/30 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:bg-hover"
+      className="group relative block overflow-hidden rounded-2xl border border-primary/20 bg-card p-4 shadow-2xl shadow-black/30 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:bg-hover"
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(30,215,96,0.18),transparent_45%)]" />
       <div className="relative">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <p className="min-w-0 text-xl font-bold leading-snug tracking-tight text-white">
+          <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-white line-clamp-2 break-words">
             {job.idea}
           </p>
           <span className={`badge shrink-0 ${status.className}`}>
@@ -93,7 +93,7 @@ function ActiveJobCard({ job }: { job: Job }) {
             {status.label}
           </span>
         </div>
-        <div className="mt-5 flex items-center justify-between gap-4 text-xs">
+        <div className="mt-3 flex items-center justify-between gap-4 text-xs">
           <span className="text-muted-foreground">
             Dibuat {new Date(job.createdAt).toLocaleDateString('id-ID')}
           </span>
