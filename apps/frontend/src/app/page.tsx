@@ -4,11 +4,13 @@ import { useState, useRef, useEffect } from 'react';
 import type { KeyboardEvent } from 'react';
 import Link from 'next/link';
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowLeft,
   Check,
   Copy,
   Loader2,
+  RotateCcw,
   Send,
   Sparkles,
 } from 'lucide-react';
@@ -43,19 +45,23 @@ const MODELS = [
   { value: 'minimax-m3', label: 'MiniMax M3' },
 ];
 
+const DEFAULT_MODEL = MODELS[0].value;
+const MODEL_STORAGE_KEY = 'ai-trackster-selected-model';
+
 const formatTime = () =>
   new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export default function ChatHomePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [model, setModel] = useState(MODELS[0].value);
+  const [model, setModel] = useState<string>(DEFAULT_MODEL);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [statusIndex, setStatusIndex] = useState(0);
   const [hasStarted, setHasStarted] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [lastFailedInput, setLastFailedInput] = useState('');
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -68,6 +74,21 @@ export default function ChatHomePage() {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   };
 
+  // Load persisted model selection once on mount (client‑side only)
+  useEffect(() => {
+    const stored = localStorage.getItem(MODEL_STORAGE_KEY);
+    if (stored && stored !== model && MODELS.some((m) => m.value === stored)) {
+      setModel(stored);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist model selection whenever it changes
+  useEffect(() => {
+    localStorage.setItem(MODEL_STORAGE_KEY, model);
+  }, [model]);
+
+  // Auto-scroll when new messages are added and user is near bottom
   useEffect(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
@@ -130,21 +151,21 @@ export default function ChatHomePage() {
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
+  const sendMessage = async (content: string) => {
+    if (!content.trim() || loading) return;
 
     const timestamp = formatTime();
-    const userMessage: Message = { role: 'user', content: input, timestamp };
+    const userMessage: Message = { role: 'user', content: content.trim(), timestamp };
     const assistantPlaceholder: Message = { role: 'assistant', content: '', timestamp };
 
     const displayMessages = [...messages, userMessage, assistantPlaceholder];
     const apiMessages = [
       ...messages.map(({ role, content }) => ({ role, content })),
-      { role: 'user' as const, content: input },
+      { role: 'user' as const, content: content.trim() },
     ];
 
     setMessages(displayMessages);
-    setInput('');
+    setLastFailedInput(content);
     setError('');
     setLoading(true);
     setHasStarted(false);
@@ -177,6 +198,7 @@ export default function ChatHomePage() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let streamError: string | null = null;
 
       const appendDelta = (delta: string) => {
         if (!delta) return;
@@ -212,9 +234,9 @@ export default function ChatHomePage() {
         if (eventLine?.includes('error')) {
           try {
             const parsed = JSON.parse(data);
-            setError(parsed?.message || 'Terjadi kesalahan dari server');
+            streamError = parsed?.message || 'Terjadi kesalahan dari server';
           } catch {
-            setError('Terjadi kesalahan dari server');
+            streamError = 'Terjadi kesalahan dari server';
           }
           return;
         }
@@ -243,8 +265,24 @@ export default function ChatHomePage() {
           handleRawEvent(rawEvent);
         }
       }
+
+      if (streamError) {
+        throw new Error(streamError);
+      }
     } catch (err: any) {
       setError(err?.message || 'Gagal kirim pesan');
+      // Remove the empty assistant placeholder if it still exists
+      setMessages((prev) => {
+        const updated = [...prev];
+        if (
+          updated.length > 0 &&
+          updated[updated.length - 1].role === 'assistant' &&
+          updated[updated.length - 1].content === ''
+        ) {
+          updated.pop();
+        }
+        return updated;
+      });
     } finally {
       if (statusTimer.current) {
         clearInterval(statusTimer.current);
@@ -255,6 +293,19 @@ export default function ChatHomePage() {
         textareaRef.current?.focus();
         autoResize();
       });
+    }
+  };
+
+  const handleSend = () => {
+    if (!input.trim() || loading) return;
+    const content = input.trim();
+    setInput('');
+    sendMessage(content);
+  };
+
+  const handleRetry = () => {
+    if (lastFailedInput) {
+      sendMessage(lastFailedInput);
     }
   };
 
@@ -292,10 +343,11 @@ export default function ChatHomePage() {
         </h1>
 
         <div className="flex items-center gap-2">
-          <span className="hidden text-xs font-medium text-muted-foreground sm:inline">
+          <label htmlFor="model-select" className="hidden text-xs font-medium text-muted-foreground sm:inline">
             Model
-          </span>
+          </label>
           <select
+            id="model-select"
             value={model}
             onChange={(e) => setModel(e.target.value)}
             className="field focus-ring rounded-xl px-3 py-1.5 text-xs font-medium text-muted-foreground"
@@ -362,10 +414,15 @@ export default function ChatHomePage() {
                   } ${isStreamingPlaceholder ? 'min-w-[160px]' : ''}`}
                 >
                   {isStreamingPlaceholder ? (
-                    <div className="flex h-5 items-center gap-1.5">
-                      <span className="typing-dot" />
-                      <span className="typing-dot" />
-                      <span className="typing-dot" />
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-5 items-center gap-1.5">
+                        <span className="typing-dot" />
+                        <span className="typing-dot" />
+                        <span className="typing-dot" />
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {STATUS_TEXTS[statusIndex]}
+                      </span>
                     </div>
                   ) : (
                     <p className="whitespace-pre-wrap text-sm leading-relaxed">
@@ -405,9 +462,25 @@ export default function ChatHomePage() {
         })}
 
         {error && (
-          <p className="text-xs font-medium text-status-error" role="alert">
-            {error}
-          </p>
+          <div
+            className="mb-4 flex items-start gap-2 rounded-xl border border-status-error/20 bg-status-error/5 px-4 py-3"
+            role="alert"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-error" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-status-error">{error}</p>
+              {lastFailedInput && (
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-status-error hover:text-status-error/80"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Coba lagi
+                </button>
+              )}
+            </div>
+          </div>
         )}
 
         {showScrollButton && (
