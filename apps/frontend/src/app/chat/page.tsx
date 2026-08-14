@@ -6,6 +6,7 @@ import Link from 'next/link';
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  timestamp: string;
 }
 
 const STATUS_TEXTS = [
@@ -32,6 +33,9 @@ const MODELS = [
   { value: 'kimi-k3', label: 'Kimi K3' },
   { value: 'minimax-m3', label: 'MiniMax M3' },
 ];
+
+const formatTime = () =>
+  new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -78,11 +82,15 @@ export default function ChatPage() {
   const handleSend = async () => {
     if (!input.trim() || loading) return;
 
-    const userMessage: Message = { role: 'user', content: input };
-    const assistantPlaceholder: Message = { role: 'assistant', content: '' };
+    const timestamp = formatTime();
+    const userMessage: Message = { role: 'user', content: input, timestamp };
+    const assistantPlaceholder: Message = { role: 'assistant', content: '', timestamp };
 
     const displayMessages = [...messages, userMessage, assistantPlaceholder];
-    const apiMessages = [...messages, userMessage];
+    const apiMessages = [
+      ...messages.map(({ role, content }) => ({ role, content })),
+      { role: 'user' as const, content: input },
+    ];
 
     setMessages(displayMessages);
     setInput('');
@@ -130,7 +138,11 @@ export default function ChatPage() {
           if (last && last.role === 'assistant') {
             updated[lastIndex] = { ...last, content: last.content + delta };
           } else {
-            updated.push({ role: 'assistant', content: delta });
+            updated.push({
+              role: 'assistant',
+              content: delta,
+              timestamp: formatTime(),
+            });
           }
 
           return updated;
@@ -206,7 +218,7 @@ export default function ChatPage() {
     !hasStarted;
 
   return (
-    <div className="flex flex-col h-screen -mx-4 -my-6 px-4 py-4">
+    <div className="flex flex-col h-screen -mx-4 -my-6 overflow-hidden bg-neutral-950 text-neutral-100">
       <style>{`
         @keyframes fadeInUp {
           from {
@@ -228,90 +240,160 @@ export default function ChatPage() {
         }
       `}</style>
 
-      <div className="flex items-center justify-between mb-3">
-        <Link href="/" className="text-sm text-neutral-400">
-          ← Kembali
-        </Link>
-        <select
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          className="bg-neutral-900 border border-neutral-800 rounded-lg px-2 py-1 text-xs"
+      {/* Header */}
+      <header className="flex items-center justify-between gap-2 border-b border-neutral-800 bg-neutral-900/60 px-4 py-3 backdrop-blur">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 text-sm text-neutral-400 transition-colors hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30 rounded-md px-2 py-1"
         >
-          {MODELS.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-      </div>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          <span className="hidden sm:inline">Kembali</span>
+        </Link>
 
-      <div className="flex-1 overflow-y-auto space-y-4 mb-3">
+        <div className="flex items-center gap-2">
+          <span className="hidden text-xs text-neutral-500 sm:inline">Model</span>
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="rounded-xl border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+            aria-label="Pilih model AI"
+          >
+            {MODELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </header>
+
+      {/* Messages */}
+      <main
+        className="flex-1 overflow-y-auto px-3 py-4 sm:px-4"
+        role="log"
+        aria-live="polite"
+      >
         {messages.length === 0 && (
-          <p className="text-sm text-neutral-500 text-center mt-10">Mulai ngobrol...</p>
+          <p className="mt-10 text-center text-sm text-neutral-500">
+            Mulai ngobrol...
+          </p>
         )}
 
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex chat-bubble-enter ${
-              msg.role === 'user' ? 'justify-end' : 'justify-start'
-            }`}
-          >
-            <div className={`max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'} flex flex-col`}>
-              <span className="text-xs text-neutral-400 mb-1">
-                {msg.role === 'user' ? 'Kamu' : 'AI'}
-              </span>
-
+        {messages.map((msg, i) => {
+          const isUser = msg.role === 'user';
+          return (
+            <div
+              key={i}
+              className={`chat-bubble-enter mb-4 flex items-end gap-2 ${
+                isUser ? 'justify-end' : 'justify-start'
+              }`}
+            >
+              {!isUser && (
+                <div className="mb-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-900/50 text-[10px] font-bold text-emerald-200">
+                  AI
+                </div>
+              )}
               <div
-                className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
-                  msg.role === 'user'
-                    ? 'bg-emerald-700 text-white'
-                    : 'bg-neutral-900 border border-neutral-800'
+                className={`flex max-w-[85%] flex-col sm:max-w-[75%] ${
+                  isUser ? 'items-end' : 'items-start'
                 }`}
               >
-                {showStatus && i === messages.length - 1 ? (
-                  <span className="text-neutral-400">{STATUS_TEXTS[statusIndex]}</span>
-                ) : (
-                  msg.content
+                <div
+                  className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
+                    isUser
+                      ? 'rounded-br-md bg-emerald-600 text-white'
+                      : 'rounded-bl-md border border-neutral-800 bg-neutral-900 text-neutral-200'
+                  }`}
+                >
+                  {showStatus && i === messages.length - 1 ? (
+                    <span className="italic text-neutral-400">
+                      {STATUS_TEXTS[statusIndex]}
+                    </span>
+                  ) : (
+                    msg.content
+                  )}
+                </div>
+
+                {msg.content && (
+                  <div
+                    className={`mt-1 flex items-center gap-2 ${
+                      isUser ? 'justify-end' : 'justify-start'
+                    }`}
+                  >
+                    <span className="text-[10px] text-neutral-500">
+                      {msg.timestamp}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(msg.content, i)}
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30"
+                      aria-label="Salin pesan"
+                      title="Salin pesan"
+                    >
+                      {copiedIndex === i ? (
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3"
+                          />
+                        </svg>
+                      )}
+                      {copiedIndex === i ? 'Tersalin' : 'Salin'}
+                    </button>
+                  </div>
                 )}
               </div>
-
-              {msg.content && (
-                <button
-                  onClick={() => handleCopy(msg.content, i)}
-                  className="mt-1 text-xs text-neutral-400 hover:text-neutral-200 focus:outline-none"
-                  aria-label="Salin pesan"
-                  title="Salin pesan"
-                >
-                  {copiedIndex === i ? '✓ Tersalin' : '📋 Salin'}
-                </button>
-              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
 
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && (
+          <p className="text-xs text-red-400" role="alert">
+            {error}
+          </p>
+        )}
         <div ref={scrollRef} />
-      </div>
+      </main>
 
-      <div className="flex gap-2">
-        <textarea
-          className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-sm resize-none"
-          rows={1}
-          placeholder="Ketik pesan..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={loading}
-        />
-        <button
-          onClick={handleSend}
-          disabled={loading || !input.trim()}
-          className="bg-emerald-600 text-white rounded-lg px-4 text-sm font-medium disabled:opacity-40"
-        >
-          Kirim
-        </button>
-      </div>
+      {/* Input */}
+      <footer className="border-t border-neutral-800 bg-neutral-900/70 px-3 py-3 backdrop-blur sm:px-4">
+        <div className="flex items-end gap-2">
+          <textarea
+            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl border border-neutral-700 bg-neutral-950 px-4 py-2.5 text-sm leading-relaxed placeholder:text-neutral-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-60"
+            rows={1}
+            placeholder="Tulis pesan..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={loading}
+            aria-label="Tulis pesan"
+          />
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={loading || !input.trim()}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow transition-colors hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Kirim pesan"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+              />
+            </svg>
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }
