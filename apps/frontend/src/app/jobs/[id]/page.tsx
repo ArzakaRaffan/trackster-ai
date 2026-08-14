@@ -74,7 +74,7 @@ export default function JobDetailPage() {
         mutate();
       } else if (pendingAction === 'delete') {
         await api.delete(`/jobs/${id}`, secret);
-        router.push('/');
+        router.push('/jobs');
       }
     } catch (err: any) {
       setError(err.message || 'Aksi gagal');
@@ -91,7 +91,7 @@ export default function JobDetailPage() {
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="space-y-6">
         <Link
-          href="/"
+          href="/jobs"
           className="focus-ring inline-flex items-center gap-1 rounded-lg text-sm text-muted-foreground transition hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
