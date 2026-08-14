@@ -113,7 +113,7 @@ run_smoke_test() {
   local frontend_port="${FRONTEND_PORT:-3100}"
 
   for attempt in $(seq 1 $max_retries); do
-    if kill -0 "$backend_pid" 2>/dev/null && (exec 3<>/dev/tcp/127.0.0.1/$backend_port) 2>/dev/null; then
+    if kill -0 "$backend_pid" 2>/dev/null && (: </dev/tcp/127.0.0.1/${backend_port}) 2>/dev/null; then
       backend_ready=1
       break
     fi
@@ -125,7 +125,7 @@ run_smoke_test() {
   done
 
   for attempt in $(seq 1 $max_retries); do
-    if kill -0 "$frontend_pid" 2>/dev/null && (exec 3<>/dev/tcp/127.0.0.1/$frontend_port) 2>/dev/null; then
+    if kill -0 "$frontend_pid" 2>/dev/null && (: </dev/tcp/127.0.0.1/${frontend_port}) 2>/dev/null; then
       frontend_ready=1
       break
     fi
