@@ -55,6 +55,8 @@ export const api = {
     }),
   deleteSession: (id: number) =>
     request<{ success: boolean }>(`/chat-sessions/${id}`, { method: 'DELETE' }),
+  getMe: () =>
+    request<{ user: { id: number; username: string } }>('/auth/me'),
 };
 
 export { API_URL, ApiError };

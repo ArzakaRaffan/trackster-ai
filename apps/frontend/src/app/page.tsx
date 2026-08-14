@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   AlertTriangle,
   ArrowDown,
-  ArrowLeft,
+  Briefcase,
   Check,
   Copy,
   Loader2,
@@ -18,6 +18,8 @@ import {
   X,
 } from 'lucide-react';
 import { api, ChatSession, ChatMessage } from '@/lib/api';
+import ModelSelector from '@/components/ModelSelector';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -38,19 +40,19 @@ const STATUS_TEXTS = [
 ];
 
 const MODELS = [
-  { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
-  { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
-  { value: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro' },
-  { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-  { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
-  { value: 'glm-5.2', label: 'GLM 5.2' },
-  { value: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
-  { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
-  { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
-  { value: 'kimi-k2.7-code', label: 'Kimi K2.7 Code' },
-  { value: 'kimi-k2.7-code-highspeed', label: 'Kimi K2.7 Code (Highspeed)' },
-  { value: 'kimi-k3', label: 'Kimi K3' },
-  { value: 'minimax-m3', label: 'MiniMax M3' },
+  { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', disabled: false },
+  { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', disabled: false },
+  { value: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', disabled: false },
+  { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', disabled: true },
+  { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', disabled: false },
+  { value: 'glm-5.2', label: 'GLM 5.2', disabled: false },
+  { value: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', disabled: true },
+  { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', disabled: true },
+  { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', disabled: true },
+  { value: 'kimi-k2.7-code', label: 'Kimi K2.7 Code', disabled: false },
+  { value: 'kimi-k2.7-code-highspeed', label: 'Kimi K2.7 Code (Highspeed)', disabled: true },
+  { value: 'kimi-k3', label: 'Kimi K3', disabled: false },
+  { value: 'minimax-m3', label: 'MiniMax M3', disabled: false },
 ];
 
 const DEFAULT_MODEL = MODELS[0].value;
@@ -106,7 +108,7 @@ function MessageBubble({
           className={`relative ${
             isUser
               ? 'rounded-2xl rounded-br-md bg-accent px-4 py-3 text-accent-foreground shadow-lg shadow-black/20'
-              : 'rounded-2xl rounded-bl-md border border-white/10 bg-[#1e1e1e]/90 px-4 py-3 text-foreground shadow-xl shadow-black/20'
+              : 'rounded-2xl rounded-bl-md border-[1.5px] border-border bg-[#1e1e1e]/90 px-4 py-3 text-foreground shadow-xl shadow-black/20'
           } ${isStreamingPlaceholder ? 'min-w-[160px]' : ''}`}
         >
           {isStreamingPlaceholder ? (
@@ -163,6 +165,8 @@ export default function ChatHomePage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const statusTimer = useRef<any>(null);
+
+  const { user, loading: userLoading } = useCurrentUser();
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -285,7 +289,6 @@ export default function ChatHomePage() {
   const sendMessage = async (content: string) => {
     if (!content.trim() || loading) return;
 
-    // Ensure we have a session to attach the message to
     let sessionId = activeSessionId;
     if (sessionId === null) {
       try {
@@ -418,7 +421,6 @@ export default function ChatHomePage() {
         throw new Error(streamError);
       }
 
-      // Update sessions list after successful send
       await loadSessions();
     } catch (err: any) {
       setError(err?.message || 'Gagal kirim pesan');
@@ -485,9 +487,8 @@ export default function ChatHomePage() {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
-      {/* Sidebar */}
-      <aside className="w-72 shrink-0 border-r border-white/5 bg-black/20 flex flex-col">
-        <div className="p-4 border-b border-white/5">
+      <aside className="w-72 shrink-0 border-r-[1.5px] border-border bg-black/20 flex flex-col">
+        <div className="p-4 border-b border-border">
           <button
             type="button"
             onClick={handleNewChat}
@@ -513,7 +514,7 @@ export default function ChatHomePage() {
             sessions.map((session) => (
               <div
                 key={session.id}
-                className={`group flex items-center gap-1 px-2 py-2 ${
+                className={`group mb-1 flex items-center gap-1 rounded-lg border border-border px-2 py-2 ${
                   activeSessionId === session.id
                     ? 'bg-white/10'
                     : 'hover:bg-white/5'
@@ -545,42 +546,31 @@ export default function ChatHomePage() {
         </div>
       </aside>
 
-      {/* Main chat area */}
       <div className="relative flex min-w-0 flex-1 flex-col">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(30,215,96,0.14),transparent_38%)]" />
         <div className="pointer-events-none absolute right-[-8%] top-[-10%] h-72 w-72 rounded-full bg-primary/15 blur-3xl" />
         <div className="pointer-events-none absolute left-[-5%] bottom-[-5%] h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
 
-        <header className="relative z-10 flex items-center justify-between gap-2 border-b border-white/5 bg-black/20 px-4 py-3 backdrop-blur-xl">
-          <Link
-            href="/jobs"
-            className="focus-ring inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm text-muted-foreground transition hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Jobs</span>
-          </Link>
+        <header className="relative z-10 flex items-center justify-between gap-2 border-b-[1.5px] border-border bg-black/20 px-4 py-3 backdrop-blur-xl">
+          {user?.username === 'arzaka' && (
+            <Link
+              href="/jobs"
+              className="focus-ring inline-flex items-center gap-2 rounded-lg border border-border bg-transparent px-3 py-2 text-sm text-muted-foreground transition hover:bg-hover hover:text-foreground"
+            >
+              <Briefcase className="h-4 w-4" />
+              <span className="hidden sm:inline">Jobs</span>
+            </Link>
+          )}
 
           <h1 className="flex-1 text-center text-sm font-semibold tracking-tight text-foreground">
             Chat
           </h1>
 
           <div className="flex items-center gap-2">
-            <label htmlFor="model-select" className="hidden text-xs font-medium text-muted-foreground sm:inline">
+            <label className="hidden text-xs font-medium text-muted-foreground sm:inline">
               Model
             </label>
-            <select
-              id="model-select"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="field focus-ring rounded-xl px-3 py-1.5 text-xs font-medium text-muted-foreground"
-              aria-label="Pilih model AI"
-            >
-              {MODELS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
+            <ModelSelector value={model} onChange={setModel} options={MODELS} />
           </div>
         </header>
 
@@ -663,7 +653,7 @@ export default function ChatHomePage() {
           )}
         </main>
 
-        <footer className="relative z-10 border-t border-white/5 bg-black/20 px-3 py-3 backdrop-blur-xl sm:px-6 pb-[env(safe-area-inset-bottom)]">
+        <footer className="relative z-10 border-t-[1.5px] border-border bg-black/20 px-3 py-3 backdrop-blur-xl sm:px-6 pb-[env(safe-area-inset-bottom)]">
           <div className="flex items-end gap-2">
             <textarea
               ref={textareaRef}
@@ -695,7 +685,6 @@ export default function ChatHomePage() {
           </div>
         </footer>
 
-        {/* Delete confirmation modal */}
         {pendingDeleteId !== null && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm">
             <div className="shadow-dialog w-full max-w-sm rounded-2xl border border-white/10 bg-[#1b1b1b] p-6">
