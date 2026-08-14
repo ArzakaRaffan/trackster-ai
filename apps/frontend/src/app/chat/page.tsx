@@ -3,6 +3,14 @@
 import { useState, useRef, useEffect } from 'react';
 import type { KeyboardEvent } from 'react';
 import Link from 'next/link';
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  Loader2,
+  Send,
+  Sparkles,
+} from 'lucide-react';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -218,7 +226,7 @@ export default function ChatPage() {
     !hasStarted;
 
   return (
-    <div className="flex h-screen -mx-4 -my-6 flex-col overflow-hidden bg-neutral-950 text-white">
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <style>{`
         @keyframes fadeInUp {
           from {
@@ -240,31 +248,23 @@ export default function ChatPage() {
         }
       `}</style>
 
-      <header className="flex items-center justify-between gap-2 border-b border-neutral-800 bg-neutral-950/80 px-4 py-3 backdrop-blur-md">
+      <header className="flex items-center justify-between gap-2 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-md">
         <Link
           href="/"
-          className="focus-ring inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm text-neutral-400 transition hover:text-white"
+          className="focus-ring inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm text-muted-foreground transition hover:text-foreground"
         >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
+          <ArrowLeft className="h-4 w-4" />
           <span className="hidden sm:inline">Kembali</span>
         </Link>
 
-        <h1 className="flex-1 text-center text-sm font-semibold text-white">Chat</h1>
+        <h1 className="flex-1 text-center text-sm font-semibold text-foreground">Chat</h1>
 
         <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-neutral-500 sm:inline">Model</span>
+          <span className="hidden text-xs text-muted-foreground sm:inline">Model</span>
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className="focus-ring rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-300"
+            className="field focus-ring rounded-xl px-3 py-1.5 text-xs text-muted-foreground"
             aria-label="Pilih model AI"
           >
             {MODELS.map((m) => (
@@ -278,7 +278,10 @@ export default function ChatPage() {
 
       <main className="flex-1 overflow-y-auto px-3 py-4 sm:px-4" role="log" aria-live="polite">
         {messages.length === 0 && (
-          <p className="mt-10 text-center text-sm text-neutral-500">Mulai ngobrol...</p>
+          <div className="mt-10 flex flex-col items-center gap-2 text-center">
+            <Sparkles className="h-8 w-8 text-text-disabled" />
+            <p className="text-sm text-muted-foreground">Mulai ngobrol...</p>
+          </div>
         )}
 
         {messages.map((msg, i) => {
@@ -291,7 +294,7 @@ export default function ChatPage() {
               }`}
             >
               {!isUser && (
-                <div className="mb-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-[10px] font-bold text-emerald-400">
+                <div className="mb-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-accent">
                   AI
                 </div>
               )}
@@ -303,12 +306,12 @@ export default function ChatPage() {
                 <div
                   className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
                     isUser
-                      ? 'rounded-br-md bg-neutral-800 text-white'
-                      : 'rounded-bl-md border border-neutral-800 bg-neutral-900 text-white'
+                      ? 'rounded-br-md bg-secondary text-secondary-foreground'
+                      : 'rounded-bl-md border border-border bg-card text-foreground'
                   }`}
                 >
                   {showStatus && i === messages.length - 1 ? (
-                    <span className="italic text-neutral-400">
+                    <span className="italic text-muted-foreground">
                       {STATUS_TEXTS[statusIndex]}
                     </span>
                   ) : (
@@ -318,29 +321,20 @@ export default function ChatPage() {
 
                 {msg.content && (
                   <div className={`mt-1 flex items-center gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                    <span className="text-[10px] text-neutral-500 tabular-nums">
+                    <span className="text-[10px] text-muted-foreground tabular-nums">
                       {msg.timestamp}
                     </span>
                     <button
                       type="button"
                       onClick={() => handleCopy(msg.content, i)}
-                      className="focus-ring inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-400 transition hover:bg-neutral-800 hover:text-white"
+                      className="focus-ring inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-muted hover:text-foreground"
                       aria-label="Salin pesan"
                       title="Salin pesan"
                     >
                       {copiedIndex === i ? (
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
+                        <Check className="h-3 w-3" />
                       ) : (
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3"
-                          />
-                        </svg>
+                        <Copy className="h-3 w-3" />
                       )}
                       {copiedIndex === i ? 'Tersalin' : 'Salin'}
                     </button>
@@ -352,17 +346,17 @@ export default function ChatPage() {
         })}
 
         {error && (
-          <p className="text-xs text-red-400" role="alert">
+          <p className="text-xs text-status-error" role="alert">
             {error}
           </p>
         )}
         <div ref={scrollRef} />
       </main>
 
-      <footer className="border-t border-neutral-800 bg-neutral-950/80 px-3 py-3 backdrop-blur-md sm:px-4 pb-[env(safe-area-inset-bottom)]">
+      <footer className="border-t border-border bg-background/80 px-3 py-3 backdrop-blur-md sm:px-4 pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-end gap-2">
           <textarea
-            className="focus-ring max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl border-0 bg-neutral-900 px-4 py-2.5 text-sm leading-relaxed text-white placeholder:text-neutral-500 focus:ring-2 focus:ring-emerald-500/50 disabled:opacity-60"
+            className="field focus-ring max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl px-4 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-text-disabled focus:outline-none disabled:opacity-60"
             rows={1}
             placeholder="Tulis pesan..."
             value={input}
@@ -375,17 +369,14 @@ export default function ChatPage() {
             type="button"
             onClick={handleSend}
             disabled={loading || !input.trim()}
-            className="focus-ring inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-neutral-950 shadow transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40 active:scale-95"
+            className="btn btn-primary h-11 w-11 shrink-0 rounded-full p-0 focus-ring"
             aria-label="Kirim pesan"
           >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-              />
-            </svg>
+            {loading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Send className="h-5 w-5" />
+            )}
           </button>
         </div>
       </footer>
