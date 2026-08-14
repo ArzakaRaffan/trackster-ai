@@ -23,4 +23,5 @@ jobs:
             docker compose build ai-backend
             docker compose build ai-frontend
             docker compose up -d
+            cd agent-runner && docker build -t ai-trackster-agent-runner:latest . && cd ..
             docker image prune -f

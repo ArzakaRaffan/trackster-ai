@@ -53,19 +53,37 @@ mapfile -t EDITABLE_FILES < <(find apps -type f \
 
 echo "=== Menjalankan Aider (model: $AIDER_MODEL, ${#EDITABLE_FILES[@]} file di-add ke chat) ==="
 
-# NOTE: MAX_AIDER_MESSAGES cuma dipakai buat nampilin info, TIDAK mengontrol
-# apapun secara aktual — loop verifikasi build di bawah selalu di-cap 3x,
-# dan Aider sendiri tidak pernah diberi flag apapun terkait variable ini.
-# Kalau maksudnya membatasi jumlah pesan/turn otonom Aider per invocation,
-# itu belum diimplementasikan — perlu dicek flag Aider yang sesuai kalau itu
-# yang diinginkan.
 MAX_BUILD_RETRIES=3
 ATTEMPT=1
 BUILD_OK=0
 
 # Attempt pertama: eksekusi spec penuh
-aider --model "$AIDER_MODEL" --yes-always --no-check-update \
-  --message-file /tmp/prompt.txt "${EDITABLE_FILES[@]}" 2>&1
+AIDER_OUTPUT=$(aider --model "$AIDER_MODEL" --yes-always --no-check-update \
+  --message-file /tmp/prompt.txt "${EDITABLE_FILES[@]}" 2>&1)
+echo "$AIDER_OUTPUT"
+
+# --- Loop lanjutan: spec besar/multi-bagian sering cuma SEBAGIAN dikerjain dalam
+# satu turn (model berhenti setelah 1 chunk logis, build tetap lolos karena chunk
+# itu sendiri valid, job dilaporkan selesai padahal scope-nya jauh dari lengkap —
+# kejadian nyata: spec redesign 2 halaman, yang beneran dikerjain cuma token
+# setup). Build-fix loop di bawah CUMA jalan kalau build GAGAL, jadi tidak
+# menangkap kasus "build sukses tapi belum selesai". Minta Aider eksplisit lapor
+# TASK_COMPLETE kalau semua bagian spec sudah tercover, ulangi kalau belum,
+# dibatasi MAX_CONTINUATION_ROUNDS biar tidak muter tanpa henti/boros API call.
+MAX_CONTINUATION_ROUNDS="${MAX_CONTINUATION_ROUNDS:-3}"
+ROUND=1
+while [ $ROUND -le $MAX_CONTINUATION_ROUNDS ]; do
+  if echo "$AIDER_OUTPUT" | grep -q "TASK_COMPLETE"; then
+    echo "=== Agent lapor implementasi spec sudah lengkap (round $ROUND) ==="
+    break
+  fi
+  echo "=== Lanjutan implementasi spec (round $ROUND/$MAX_CONTINUATION_ROUNDS) ==="
+  AIDER_OUTPUT=$(aider --model "$AIDER_MODEL" --yes-always --no-check-update \
+    --message "Cek ulang spec lengkap di /tmp/prompt.txt dari awal. Kalau ada bagian yang BELUM kamu implementasikan (misal masih ada section/checklist yang belum disentuh sama sekali), lanjutkan kerjain SEKARANG -- jangan berhenti di tengah scope. Kalau SEMUA bagian di spec itu sudah lengkap diimplementasikan, balas dengan kata TASK_COMPLETE di akhir pesan kamu dan jangan ubah file apapun lagi." \
+    "${EDITABLE_FILES[@]}" 2>&1)
+  echo "$AIDER_OUTPUT"
+  ROUND=$((ROUND + 1))
+done
 
 # --- Loop verifikasi build, feed error balik ke Aider kalau gagal ---
 while [ $ATTEMPT -le $MAX_BUILD_RETRIES ]; do

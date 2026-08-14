@@ -121,6 +121,7 @@ async function processJob(job) {
       `GIT_AUTHOR_NAME=${process.env.GIT_AUTHOR_NAME || 'AI Trackster Agent'}`,
       `GIT_AUTHOR_EMAIL=${process.env.GIT_AUTHOR_EMAIL || 'ai-agent@trackster.my.id'}`,
       `MAX_AIDER_MESSAGES=${process.env.MAX_AIDER_MESSAGES || '40'}`,
+      `MAX_CONTINUATION_ROUNDS=${process.env.MAX_CONTINUATION_ROUNDS || '3'}`,
     ].join('\n'),
   );
 
