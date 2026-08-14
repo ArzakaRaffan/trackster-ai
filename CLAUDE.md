@@ -32,6 +32,7 @@ Agent SELALU push ke branch baru (`ai-agent/job-<id>`), **TIDAK PERNAH** ke `mai
 ## Provider AI — jangan asal asumsi compatible
 
 - **Planner** (generate spec dari ide) → Claude, via `mwapi.dev` (reseller). **mwapi.dev CUMA support Claude** (Opus/Sonnet/Haiku, Anthropic-compatible), TIDAK ADA DeepSeek/model lain di situ — sempat salah asumsi soal ini, jangan diulang.
+- **mwapi.dev diam-diam nyuntik tool definitions ke SETIAP request**, walau kita nggak pernah kirim param `tools` (kelihatan dari `input_tokens` yang jauh lebih gede dari prompt asli, ~7000+ token buat prompt pendek). Kalau ide user nyebut path file spesifik, modelnya bisa nyoba "manggil" tool (misal `read_file`) alih-alih nulis spec teks, dan proxy-nya leak raw tool-call JSON sebagai text block biasa (`plan` jadi rusak, contoh nyata: cuma `read_file`). Fix di `planner.service.ts`: system prompt eksplisit larang tool use SAMA SEKALI, plus validasi tolak response yang kependekan/berbentuk JSON — jangan diamnya disimpan jadi plan yang rusak.
 - **Eksekusi** (Aider beneran ngedit kode) → DeepSeek **resmi** (`platform.deepseek.com`, `https://api.deepseek.com`), BUKAN reseller. Model: `deepseek-v4-flash` (default, murah) atau `deepseek-v4-pro`. Nama model lama (`deepseek-chat`/`deepseek-reasoner`) sudah di-retire per 24 Juli 2026, jangan dipakai.
 - **Chat biasa** → `kelontongai.my.id` (key terpisah, stakes rendah, banyak model). Env var `CHAT_API_KEY`/`CHAT_API_BASE_URL` ini SENGAJA beda dari `PLANNER_API_KEY` — jangan digabung, biar kalau satu key mati yang lain nggak ikut kena.
 
