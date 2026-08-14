@@ -30,6 +30,73 @@ function log(msg) {
   console.log(`[${new Date().toISOString()}] ${msg}`);
 }
 
+// --- Reconciliation: worker restart (misal ke-trigger CD sewaktu deploy push ke main)
+// bisa motong proses PAS lagi nunggu container job selesai. Container-nya sendiri jalan
+// independen dan biasanya tetap selesai & push branch-nya, tapi row Job di DB nyangkut
+// RUNNING selamanya karena proses yang harusnya update DB udah mati duluan. Reconcile
+// pas worker start: cek tiap job RUNNING, verifikasi ke remote apa branch-nya beneran
+// udah ke-push -- kalau ada berarti sebenernya sukses (DONE), kalau nggak ada berarti
+// beneran keputus di tengah jalan (FAILED, biar jelas alih-alih nyangkut diam-diam).
+function branchExistsOnRemote(targetRepo, branchName, sshKeyContent) {
+  return new Promise((resolve) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-trackster-reconcile-'));
+    const keyPath = path.join(tmpDir, 'deploy_key');
+    fs.writeFileSync(keyPath, (sshKeyContent || '').trimEnd() + '\n', { mode: 0o600 });
+
+    const child = spawn(
+      'git',
+      ['ls-remote', '--exit-code', '--heads', targetRepo, `refs/heads/${branchName}`],
+      {
+        env: {
+          ...process.env,
+          GIT_SSH_COMMAND: `ssh -i ${keyPath} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null`,
+        },
+      },
+    );
+    child.on('close', (code) => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      resolve(code === 0);
+    });
+    child.on('error', () => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      resolve(false);
+    });
+  });
+}
+
+async function reconcileOrphanedJobs() {
+  const orphaned = await prisma.job.findMany({ where: { status: 'RUNNING' } });
+  if (orphaned.length === 0) return;
+
+  log(`Ketemu ${orphaned.length} job nyangkut RUNNING dari sebelum restart, reconcile dulu...`);
+
+  for (const job of orphaned) {
+    const branchName = `ai-agent/job-${job.id}`;
+    const isSelfEdit = process.env.SELF_REPO_URL && job.targetRepo === process.env.SELF_REPO_URL;
+    const sshKeyContent = isSelfEdit ? process.env.GIT_SSH_KEY_SELF : process.env.GIT_SSH_KEY;
+
+    const exists = await branchExistsOnRemote(job.targetRepo, branchName, sshKeyContent);
+
+    if (exists) {
+      await prisma.job.update({
+        where: { id: job.id },
+        data: { status: 'DONE', branchName, completedAt: new Date() },
+      });
+      log(`Job ${job.id}: branch ${branchName} ternyata udah ke-push, reconcile jadi DONE.`);
+    } else {
+      await prisma.job.update({
+        where: { id: job.id },
+        data: {
+          status: 'FAILED',
+          errorMessage: 'Worker restart di tengah proses (kemungkinan ke-trigger CD deploy), job terputus sebelum sempat push branch.',
+          completedAt: new Date(),
+        },
+      });
+      log(`Job ${job.id}: branch ${branchName} nggak ketemu, reconcile jadi FAILED.`);
+    }
+  }
+}
+
 async function pickupNextJob() {
   // Pakai updateMany dengan kondisi status QUEUED sebagai "atomic claim" sederhana,
   // biar kalau ada >1 worker instance nggak keduanya ngerjain job yang sama.
@@ -165,6 +232,11 @@ async function processJob(job) {
 
 async function pollLoop() {
   log('Worker dimulai, polling tiap ' + POLL_INTERVAL_MS / 1000 + ' detik...');
+  try {
+    await reconcileOrphanedJobs();
+  } catch (err) {
+    log(`Error saat reconcile job orphan: ${err.message}`);
+  }
   while (true) {
     try {
       const job = await pickupNextJob();
