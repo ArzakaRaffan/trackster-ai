@@ -260,7 +260,12 @@ async function checkEndpointHealth(url, timeoutMs) {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
-    if (res.ok) return { ok: true };
+    // >=500 doang yang dianggap "server rusak". Endpoint kayak /auth/me atau /jobs
+    // butuh login (AuthGuard) -- tanpa cookie session, response NORMAL-nya 401, itu
+    // BUKTI server jalan benar (nolak request tanpa auth), bukan tanda server down.
+    // Kalau syaratnya res.ok (200-299), 401 keanggep "gagal" dan auto-revert kepicu
+    // di SETIAP auto-merge yang sukses sekalipun -- persis kebalikan dari tujuan check ini.
+    if (res.status < 500) return { ok: true };
     return { ok: false, status: res.status };
   } catch (err) {
     return { ok: false, error: err.message || 'Network error' };
@@ -279,8 +284,12 @@ async function appendReviewReasoning(jobId, newText) {
 }
 
 async function runPostMergeHealthCheck(jobId) {
-  const baseUrlBackend = process.env.BACKEND_HEALTH_URL || process.env.BACKEND_URL || 'http://127.0.0.1:4100';
-  const baseUrlFrontend = process.env.FRONTEND_HEALTH_URL || process.env.FRONTEND_URL || 'http://127.0.0.1:3100';
+  // Worker jalan di HOST VPS, bukan di dalam container -- backend/frontend AI Trackster
+  // cuma "expose" port ke container lain di shared-web-net (bukan "ports" ke host), jadi
+  // 127.0.0.1:4100/3100 dari host itu connection refused SELALU. Cek lewat domain publik
+  // (via nginx) yang beneran reachable dari mana saja, sama seperti user asli akses.
+  const baseUrlBackend = process.env.BACKEND_HEALTH_URL || process.env.BACKEND_URL || 'https://api.ai.trackster.my.id';
+  const baseUrlFrontend = process.env.FRONTEND_HEALTH_URL || process.env.FRONTEND_URL || 'https://ai.trackster.my.id';
   const endpoints = [
     { name: 'backend /auth/me', url: `${baseUrlBackend}/auth/me` },
     { name: 'backend /jobs', url: `${baseUrlBackend}/jobs` },
