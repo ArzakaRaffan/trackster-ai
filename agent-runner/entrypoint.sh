@@ -80,8 +80,13 @@ smoke_cleanup() {
   local pid="$1"
   if [ -n "$pid" ]; then
     if kill -0 "$pid" 2>/dev/null; then
-      local pgid
-      pgid=$(ps -o pgid= -p "$pid" | tr -d ' ')
+      # `ps` sering nggak ke-install di image container minimal (itu penyebab "ps: command
+      # not found" yang bikin cleanup diam-diam degradasi ke kill single-pid doang, nyisain
+      # child process `npm run dev` jadi orphan). Ambil pgid langsung dari /proc/<pid>/stat
+      # (field ke-5, selalu ada di Linux) biar nggak depend ke binary `ps` sama sekali.
+      local stat_line pgid
+      stat_line=$(cat "/proc/$pid/stat" 2>/dev/null)
+      pgid=$(printf '%s\n' "${stat_line##*) }" | awk '{print $3}')
       if [ -n "$pgid" ]; then
         kill -- -"$pgid" 2>/dev/null
       fi
@@ -146,6 +151,11 @@ run_smoke_test() {
     check_url "http://127.0.0.1:${frontend_port}/jobs"
   else
     failed_endpoints+="frontend_ready=$frontend_ready; "
+    # "frontend_ready=0" doang nggak ngasih tau kenapa (crash? port konflik? masih compile?).
+    # Kasih tail log dev server-nya biar Aider (atau manusia yang baca) tau akar masalahnya,
+    # bukan cuma gejalanya -- ini juga ikut ke-capture ke BUILD_LOG lewat SMOKE_OUTPUT=$(...).
+    echo "--- tail /tmp/frontend-smoke.log (kenapa frontend nggak pernah ready) ---"
+    tail -n 60 /tmp/frontend-smoke.log 2>/dev/null
   fi
 
   smoke_cleanup "$frontend_pid"
