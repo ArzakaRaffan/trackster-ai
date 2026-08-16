@@ -17,7 +17,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { api, ChatSession, ChatMessage } from '@/lib/api';
+import { api } from '@/lib/api';
+import type { ChatSession, ChatMessage } from '@/lib/api';
 import ModelSelector from '@/components/ModelSelector';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
