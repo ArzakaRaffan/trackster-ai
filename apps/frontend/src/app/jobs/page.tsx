@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
@@ -221,7 +222,7 @@ export default function JobsDashboardPage() {
     );
   }
 
-  const handleSubmitClick = (e: React.FormEvent) => {
+  const handleSubmitClick = (e: FormEvent) => {
     e.preventDefault();
     if (idea.trim().length < 5) return;
     setShowSecretPrompt(true);
