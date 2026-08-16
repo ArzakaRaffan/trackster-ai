@@ -78,6 +78,37 @@ const formatRelative = (iso: string | null) => {
   return new Date(iso).toLocaleDateString('id-ID');
 };
 
+const renderEmphasis = (text: string) => {
+  const parts = text.split(
+    /(\*\*\*[\s\S]+?\*\*\*|\*\*[\s\S]+?\*\*|\*[\s\S]+?\*)/g,
+  );
+
+  return parts.map((part, index) => {
+    if (!part) return null;
+
+    if (part.startsWith('***') && part.endsWith('***') && part.length >= 6) {
+      const inner = part.slice(3, -3);
+      return (
+        <strong key={index}>
+          <em>{inner}</em>
+        </strong>
+      );
+    }
+
+    if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
+      const inner = part.slice(2, -2);
+      return <strong key={index}>{inner}</strong>;
+    }
+
+    if (part.startsWith('*') && part.endsWith('*') && part.length >= 2) {
+      const inner = part.slice(1, -1);
+      return <em key={index}>{inner}</em>;
+    }
+
+    return part;
+  });
+};
+
 function MessageBubble({
   msg,
   isUser,
@@ -121,7 +152,7 @@ function MessageBubble({
               <span className="text-xs text-muted-foreground">{statusText}</span>
             </div>
           ) : (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">{renderEmphasis(msg.content)}</p>
           )}
         </div>
 
