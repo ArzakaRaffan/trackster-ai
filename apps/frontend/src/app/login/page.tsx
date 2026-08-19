@@ -40,7 +40,7 @@ export default function LoginPage() {
             alt="AI Trackster"
             width={509}
             height={198}
-            className="mb-3 h-14 w-auto"
+            className="mb-3 h-20 w-auto"
             priority
           />
           <p className="mt-1 text-sm text-neutral-400">Masuk buat lanjut</p>

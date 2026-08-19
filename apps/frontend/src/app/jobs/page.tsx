@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import {
@@ -261,9 +262,7 @@ export default function JobsDashboardPage() {
             <span className="badge mb-3 border border-primary/20 bg-primary/10 text-accent">
               AI Workspace
             </span>
-            <h1 className="text-4xl font-extrabold leading-none tracking-tight text-white sm:text-5xl">
-              AI Trackster
-            </h1>
+            <Image src="/ai-trackster-logo.png" alt="AI Trackster" width={509} height={198} className="h-16 w-auto" priority />
             <p className="mt-3 max-w-xl text-base text-muted-foreground">
               Ketik ide besar kamu, biar dikerjain semaleman.
             </p>

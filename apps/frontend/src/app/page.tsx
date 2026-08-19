@@ -522,7 +522,7 @@ export default function ChatHomePage() {
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <aside className="w-72 shrink-0 border-r-[1.5px] border-border bg-black/20 flex flex-col">
         <div className="px-4 pt-4">
-          <Image src="/ai-trackster-logo.png" alt="AI Trackster" width={509} height={198} className="h-9 w-auto" priority />
+          <Image src="/ai-trackster-logo.png" alt="AI Trackster" width={509} height={198} className="h-11 w-auto" priority />
         </div>
         <div className="p-4 border-b border-border">
           <button
