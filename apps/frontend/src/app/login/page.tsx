@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { FormEvent } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
@@ -34,22 +35,14 @@ export default function LoginPage() {
         className="glass-card w-full max-w-md rounded-2xl p-6 shadow-2xl sm:p-8"
       >
         <div className="mb-6">
-          <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-neutral-950">
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 3v3m6.364-2.364l-2.121 2.121M21 12h-3m2.364 6.364l-2.121-2.121M12 21v-3m-6.364 2.364l2.121-2.121M3 12h3m-2.364-6.364l2.121 2.121"
-              />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-white">AI Trackster</h1>
+          <Image
+            src="/ai-trackster-logo.png"
+            alt="AI Trackster"
+            width={509}
+            height={198}
+            className="mb-3 h-14 w-auto"
+            priority
+          />
           <p className="mt-1 text-sm text-neutral-400">Masuk buat lanjut</p>
         </div>
 
